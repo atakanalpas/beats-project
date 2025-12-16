@@ -1,4 +1,3 @@
-console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
 import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
