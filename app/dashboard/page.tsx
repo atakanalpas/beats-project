@@ -52,7 +52,7 @@ const contacts: ContactWithCategory[] = [
         sentAt: "2024-09-12",
         attachments: [
           { id: "a1", filename: "beat_140bpm.wav" },
-          { id: "a2", filename: "beat_140bpm_alt.wav" }
+          { id: "a2", filename: "beat_alt.wav" }
         ]
       }
     ]
@@ -78,23 +78,27 @@ const contacts: ContactWithCategory[] = [
 
 function filterContacts(list: ContactWithCategory[], search: string) {
   if (!search) return list
-  return list.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email.toLowerCase().includes(search.toLowerCase())
+  return list.filter(
+    c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.email.toLowerCase().includes(search.toLowerCase())
   )
 }
 
-function getStatusColor(lastSentAt?: string) {
+function getStatusColor(
+  lastSentAt?: string,
+  priorityAfterDays: number = 30
+) {
   if (!lastSentAt) return "bg-gray-300"
 
   const days =
     (Date.now() - new Date(lastSentAt).getTime()) /
     (1000 * 60 * 60 * 24)
 
-  if (days <= 7) return "bg-green-300"
-  if (days <= 30) return "bg-yellow-200"
-  if (days <= 90) return "bg-orange-300"
-  return "bg-red-300"
+  if (days >= priorityAfterDays) return "bg-red-400"
+  if (days >= priorityAfterDays * 0.6) return "bg-orange-300"
+  if (days >= priorityAfterDays * 0.3) return "bg-yellow-200"
+  return "bg-green-300"
 }
 
 function getCardOpacity(sentAt: string) {
@@ -111,6 +115,7 @@ function getCardOpacity(sentAt: string) {
 
 export default function DashboardPage() {
   const [search, setSearch] = useState("")
+  const [priorityAfterDays, setPriorityAfterDays] = useState(30)
 
   return (
     <div className="h-screen flex flex-col">
@@ -127,6 +132,17 @@ export default function DashboardPage() {
           className="border px-3 py-2 rounded text-sm flex-1"
         />
 
+        {/* DEV SETTING (später User Settings) */}
+        <select
+          value={priorityAfterDays}
+          onChange={e => setPriorityAfterDays(Number(e.target.value))}
+          className="border rounded px-2 py-2 text-sm"
+        >
+          <option value={14}>14 days</option>
+          <option value={30}>30 days</option>
+          <option value={60}>60 days</option>
+        </select>
+
         <button className="rounded bg-black text-white px-4 py-2 text-sm">
           Scan Sent Mails
         </button>
@@ -135,7 +151,6 @@ export default function DashboardPage() {
       {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-6">
-
           {categories.map(category => (
             <CategoryBlock
               key={category.id}
@@ -144,6 +159,7 @@ export default function DashboardPage() {
                 contacts.filter(c => c.categoryId === category.id),
                 search
               )}
+              priorityAfterDays={priorityAfterDays}
             />
           ))}
 
@@ -153,6 +169,7 @@ export default function DashboardPage() {
               contacts.filter(c => !c.categoryId),
               search
             )}
+            priorityAfterDays={priorityAfterDays}
           />
         </div>
       </main>
@@ -164,10 +181,12 @@ export default function DashboardPage() {
 
 function CategoryBlock({
   title,
-  contacts
+  contacts,
+  priorityAfterDays
 }: {
   title: string
   contacts: ContactWithCategory[]
+  priorityAfterDays: number
 }) {
   if (contacts.length === 0) return null
 
@@ -181,7 +200,11 @@ function CategoryBlock({
         {contacts
           .sort((a, b) => a.position - b.position)
           .map(contact => (
-            <ContactRow key={contact.id} contact={contact} />
+            <ContactRow
+              key={contact.id}
+              contact={contact}
+              priorityAfterDays={priorityAfterDays}
+            />
           ))}
       </div>
     </div>
@@ -190,7 +213,13 @@ function CategoryBlock({
 
 /* ================= ROW ================= */
 
-function ContactRow({ contact }: { contact: ContactWithCategory }) {
+function ContactRow({
+  contact,
+  priorityAfterDays
+}: {
+  contact: ContactWithCategory
+  priorityAfterDays: number
+}) {
   const lastSent =
     contact.sentMails.length > 0
       ? contact.sentMails[0].sentAt
@@ -204,10 +233,15 @@ function ContactRow({ contact }: { contact: ContactWithCategory }) {
     <div className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50">
       {/* LEFT */}
       <div className="sticky left-0 z-10 bg-white border-r flex">
-        <div className={'w-1 ${getStatusColor(lastSent)}'} />
+        <div
+          className={`w-1 ${getStatusColor(
+            lastSent,
+            priorityAfterDays
+          )}`}
+        />
 
         <div className="px-4 py-2">
-          <div className="font-medium text-sm leading-tight">
+          <div className="font-medium text-sm">
             {contact.name}
           </div>
           <div className="text-[11px] text-gray-400 truncate">
@@ -215,7 +249,8 @@ function ContactRow({ contact }: { contact: ContactWithCategory }) {
           </div>
           {lastSent && (
             <div className="text-[10px] text-gray-400 mt-0.5">
-              last sent {new Date(lastSent).toLocaleDateString()}
+              last sent{" "}
+              {new Date(lastSent).toLocaleDateString()}
             </div>
           )}
         </div>
@@ -250,13 +285,15 @@ function ContactRow({ contact }: { contact: ContactWithCategory }) {
 function SentMailCard({ mail }: { mail: SentMail }) {
   return (
     <div
-  className={'min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${getCardOpacity(mail.sentAt)}'}
+      className={`min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${getCardOpacity(
+        mail.sentAt
+      )}`}
     >
       <div className="text-[10px] text-gray-400 mb-1">
         {new Date(mail.sentAt).toLocaleDateString()}
       </div>
 
-      <ul className="space-y-0">
+      <ul>
         {mail.attachments.map(att => (
           <li key={att.id} className="truncate text-gray-700">
             {att.filename}
