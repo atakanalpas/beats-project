@@ -1,10 +1,9 @@
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
+
+export const runtime = "nodejs"
 
 const handler = NextAuth({
   adapter: PrismaAdapter(prisma),
