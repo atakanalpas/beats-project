@@ -1,5 +1,4 @@
 "use client"
-
 import { useState } from "react"
 
 /* ================= TYPES ================= */
@@ -113,7 +112,31 @@ function getCardOpacity(sentAt: string) {
 
 /* ================= PAGE ================= */
 
-export default function DashboardPage() {
+export default function DashboardPage({
+  searchParams,
+}: {
+  searchParams: { pw?: string }
+}) {
+  // Password Check
+  if (searchParams.pw !== process.env.DASHBOARD_PASSWORD) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <form className="space-y-4">
+          <input
+            name="pw"
+            type="password"
+            placeholder="Password"
+            className="border px-3 py-2 rounded"
+          />
+          <button className="bg-black text-white px-4 py-2 rounded">
+            Enter
+          </button>
+        </form>
+      </div>
+    )
+  }
+
+  // Main Dashboard
   const [search, setSearch] = useState("")
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
 
