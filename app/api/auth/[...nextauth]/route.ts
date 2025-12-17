@@ -1,9 +1,25 @@
 // app/api/auth/[...nextauth]/route.ts
-export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-import NextAuth from "next-auth"
-import GoogleProvider from "next-auth/providers/google"
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+
+// Dynamische Basis-URL ermitteln
+const getBaseUrl = () => {
+  // In Production/Staging: Environment Variable
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  
+  // In GitHub Codespaces/Vercel Preview: aus NEXT_PUBLIC_VERCEL_URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  // Fallback für lokale Entwicklung
+  return "http://localhost:3000";
+};
 
 const handler = NextAuth({
   providers: [
@@ -19,20 +35,20 @@ const handler = NextAuth({
   callbacks: {
     async session({ session, token }) {
       if (session.user && token.sub) {
-        (session.user as any).id = token.sub
+        (session.user as any).id = token.sub;
       }
-      return session
+      return session;
     },
     async redirect({ url, baseUrl }) {
-      // Nach Login zur Startseite oder ursprünglichen URL
-      if (url.startsWith(baseUrl)) return url
-      return baseUrl
+      // Verwende die dynamische Basis-URL
+      const actualBaseUrl = getBaseUrl();
+      if (url.startsWith("/")) {
+        return `${actualBaseUrl}${url}`;
+      }
+      return url;
     },
   },
-  pages: {
-    signIn: "/api/auth/signin", // Standard NextAuth Seite
-  },
-  debug: process.env.NODE_ENV === "development",
-})
+  debug: true, // Für Debugging in Codespaces aktivieren
+});
 
-export { handler as GET, handler as POST }
+export { handler as GET, handler as POST };
