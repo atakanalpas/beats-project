@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+
+import { useEffect, useState } from "react"
 
 /* ================= TYPES ================= */
 
@@ -18,64 +19,14 @@ type Contact = {
   id: string
   name: string
   email: string
+  category?: string | null
+  position?: number
   sentMails: SentMail[]
 }
 
-type Category = {
-  id: string
-  name: string
-}
-
-type ContactWithCategory = Contact & {
-  categoryId?: string
-  position: number
-}
-
-/* ================= MOCK DATA ================= */
-
-const categories: Category[] = [
-  { id: "cat-rapper", name: "Rapper" },
-  { id: "cat-songwriter", name: "Songwriter" }
-]
-
-const contacts: ContactWithCategory[] = [
-  {
-    id: "c1",
-    name: "Max Producer",
-    email: "max@beats.com",
-    categoryId: "cat-rapper",
-    position: 1,
-    sentMails: [
-      {
-        id: "m1",
-        sentAt: "2024-09-12",
-        attachments: [
-          { id: "a1", filename: "beat_140bpm.wav" },
-          { id: "a2", filename: "beat_alt.wav" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "c2",
-    name: "Lisa Sound",
-    email: "lisa@studio.com",
-    categoryId: "cat-songwriter",
-    position: 1,
-    sentMails: []
-  },
-  {
-    id: "c3",
-    name: "Tom Engineer",
-    email: "tom@audio.net",
-    position: 1,
-    sentMails: []
-  }
-]
-
 /* ================= HELPERS ================= */
 
-function filterContacts(list: ContactWithCategory[], search: string) {
+function filterContacts(list: Contact[], search: string) {
   if (!search) return list
   return list.filter(
     c =>
@@ -118,7 +69,7 @@ function CategoryBlock({
   priorityAfterDays
 }: {
   title: string
-  contacts: ContactWithCategory[]
+  contacts: Contact[]
   priorityAfterDays: number
 }) {
   if (contacts.length === 0) return null
@@ -131,7 +82,7 @@ function CategoryBlock({
 
       <div className="border rounded overflow-hidden">
         {contacts
-          .sort((a, b) => a.position - b.position)
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
           .map(contact => (
             <ContactRow
               key={contact.id}
@@ -148,7 +99,7 @@ function ContactRow({
   contact,
   priorityAfterDays
 }: {
-  contact: ContactWithCategory
+  contact: Contact
   priorityAfterDays: number
 }) {
   const lastSent =
@@ -233,42 +184,35 @@ function SentMailCard({ mail }: { mail: SentMail }) {
   )
 }
 
-/* ================= MAIN COMPONENT ================= */
+/* ================= MAIN ================= */
 
-export default function DashboardPage({
-  searchParams,
-}: {
-  searchParams: { pw?: string }
-}) {
-  // Passwort Check
-  if (searchParams.pw !== process.env.DASHBOARD_PASSWORD) {
+export default function DashboardPage() {
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [priorityAfterDays, setPriorityAfterDays] = useState(30)
+
+  useEffect(() => {
+    fetch("/api/dashboard")
+      .then(res => res.json())
+      .then(data => {
+        setContacts(data)
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
+  if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold mb-6 text-center">Dashboard Login</h1>
-          <form className="space-y-4">
-            <input
-              name="pw"
-              type="password"
-              placeholder="Dashboard Password"
-              className="border px-3 py-2 rounded w-64 text-center"
-              autoFocus
-            />
-            <button 
-              type="submit"
-              className="bg-black text-white px-4 py-2 rounded w-full"
-            >
-              Enter
-            </button>
-          </form>
-        </div>
+      <div className="h-screen flex items-center justify-center text-sm text-gray-400">
+        Loading dashboard…
       </div>
     )
   }
 
-  // Dashboard UI (nur wenn Passwort korrekt)
-  const [search, setSearch] = useState("")
-  const [priorityAfterDays, setPriorityAfterDays] = useState(30)
+  const categorized = {
+    Uncategorized: contacts.filter(c => !c.category)
+  }
 
   return (
     <div className="h-screen flex flex-col">
@@ -285,7 +229,6 @@ export default function DashboardPage({
           className="border px-3 py-2 rounded text-sm flex-1"
         />
 
-        {/* DEV SETTING (später User Settings) */}
         <select
           value={priorityAfterDays}
           onChange={e => setPriorityAfterDays(Number(e.target.value))}
@@ -301,27 +244,11 @@ export default function DashboardPage({
         </button>
       </header>
 
-      {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-6">
-          {categories.map(category => (
-            <CategoryBlock
-              key={category.id}
-              title={category.name}
-              contacts={filterContacts(
-                contacts.filter(c => c.categoryId === category.id),
-                search
-              )}
-              priorityAfterDays={priorityAfterDays}
-            />
-          ))}
-
           <CategoryBlock
             title="Uncategorized"
-            contacts={filterContacts(
-              contacts.filter(c => !c.categoryId),
-              search
-            )}
+            contacts={filterContacts(categorized.Uncategorized, search)}
             priorityAfterDays={priorityAfterDays}
           />
         </div>
