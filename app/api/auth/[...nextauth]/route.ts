@@ -1,9 +1,9 @@
 // app/api/auth/[...nextauth]/route.ts
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-import NextAuth from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import NextAuth from "next-auth"
+import GoogleProvider from "next-auth/providers/google"
 
 const handler = NextAuth({
   providers: [
@@ -19,16 +19,20 @@ const handler = NextAuth({
   callbacks: {
     async session({ session, token }) {
       if (session.user && token.sub) {
-        (session.user as any).id = token.sub;
+        (session.user as any).id = token.sub
       }
-      return session;
+      return session
+    },
+    async redirect({ url, baseUrl }) {
+      // Nach Login zur Startseite oder ursprünglichen URL
+      if (url.startsWith(baseUrl)) return url
+      return baseUrl
     },
   },
-  debug: true,
-  // ENTFERNE oder KOMMENTIERE DIESE ZEILEN AUS:
-  // pages: {
-  //   signIn: "/auth/signin",
-  // },
-});
+  pages: {
+    signIn: "/api/auth/signin", // Standard NextAuth Seite
+  },
+  debug: process.env.NODE_ENV === "development",
+})
 
-export { handler as GET, handler as POST };
+export { handler as GET, handler as POST }
