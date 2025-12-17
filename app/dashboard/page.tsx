@@ -1,8 +1,10 @@
+// app/dashboard/page.tsx
 "use client"
-import { useState } from "react"
+
+import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 
 /* ================= TYPES ================= */
-
 type Attachment = {
   id: string
   filename: string
@@ -32,7 +34,6 @@ type ContactWithCategory = Contact & {
 }
 
 /* ================= MOCK DATA ================= */
-
 const categories: Category[] = [
   { id: "cat-rapper", name: "Rapper" },
   { id: "cat-songwriter", name: "Songwriter" }
@@ -73,8 +74,7 @@ const contacts: ContactWithCategory[] = [
   }
 ]
 
-/* ================= HELPERS ================= */
-
+/* ================= HELPER FUNCTIONS ================= */
 function filterContacts(list: ContactWithCategory[], search: string) {
   if (!search) return list
   return list.filter(
@@ -110,98 +110,7 @@ function getCardOpacity(sentAt: string) {
   return "opacity-40"
 }
 
-/* ================= PAGE ================= */
-
-export default function DashboardPage({
-  searchParams,
-}: {
-  searchParams: { pw?: string }
-}) {
-  // Password Check
-  if (searchParams.pw !== process.env.DASHBOARD_PASSWORD) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <form className="space-y-4">
-          <input
-            name="pw"
-            type="password"
-            placeholder="Password"
-            className="border px-3 py-2 rounded"
-          />
-          <button className="bg-black text-white px-4 py-2 rounded">
-            Enter
-          </button>
-        </form>
-      </div>
-    )
-  }
-
-  // Main Dashboard
-  const [search, setSearch] = useState("")
-  const [priorityAfterDays, setPriorityAfterDays] = useState(30)
-
-  return (
-    <div className="h-screen flex flex-col">
-      {/* HEADER */}
-      <header className="flex items-center gap-4 px-6 py-4 border-b">
-        <div className="font-semibold text-lg whitespace-nowrap">
-          Audio Send Log
-        </div>
-
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search name or email…"
-          className="border px-3 py-2 rounded text-sm flex-1"
-        />
-
-        {/* DEV SETTING (später User Settings) */}
-        <select
-          value={priorityAfterDays}
-          onChange={e => setPriorityAfterDays(Number(e.target.value))}
-          className="border rounded px-2 py-2 text-sm"
-        >
-          <option value={14}>14 days</option>
-          <option value={30}>30 days</option>
-          <option value={60}>60 days</option>
-        </select>
-
-        <button className="rounded bg-black text-white px-4 py-2 text-sm">
-          Scan Sent Mails
-        </button>
-      </header>
-
-      {/* CONTENT */}
-      <main className="flex-1 overflow-auto">
-        <div className="min-w-[900px] px-4 py-4 space-y-6">
-          {categories.map(category => (
-            <CategoryBlock
-              key={category.id}
-              title={category.name}
-              contacts={filterContacts(
-                contacts.filter(c => c.categoryId === category.id),
-                search
-              )}
-              priorityAfterDays={priorityAfterDays}
-            />
-          ))}
-
-          <CategoryBlock
-            title="Uncategorized"
-            contacts={filterContacts(
-              contacts.filter(c => !c.categoryId),
-              search
-            )}
-            priorityAfterDays={priorityAfterDays}
-          />
-        </div>
-      </main>
-    </div>
-  )
-}
-
-/* ================= CATEGORY ================= */
-
+/* ================= SUB-COMPONENTS ================= */
 function CategoryBlock({
   title,
   contacts,
@@ -233,8 +142,6 @@ function CategoryBlock({
     </div>
   )
 }
-
-/* ================= ROW ================= */
 
 function ContactRow({
   contact,
@@ -303,8 +210,6 @@ function ContactRow({
   )
 }
 
-/* ================= CARD ================= */
-
 function SentMailCard({ mail }: { mail: SentMail }) {
   return (
     <div
@@ -323,6 +228,123 @@ function SentMailCard({ mail }: { mail: SentMail }) {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+/* ================= MAIN COMPONENT ================= */
+export default function DashboardPage() {
+  const searchParams = useSearchParams()
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [password, setPassword] = useState("")
+  const [search, setSearch] = useState("")
+  const [priorityAfterDays, setPriorityAfterDays] = useState(30)
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const urlPassword = searchParams.get("pw")
+    // Setze hier dein Passwort
+    const correctPassword = "meinPasswort123" // Oder aus .env: process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD
+    
+    if (urlPassword === correctPassword) {
+      setIsAuthenticated(true)
+    }
+  }, [searchParams])
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    // Redirect with password in URL
+    window.location.href = `/dashboard?pw=${password}`
+  }
+
+  // Show password form if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded-lg shadow-md">
+          <h1 className="text-2xl font-bold mb-6 text-center">
+            Dashboard Login
+          </h1>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter dashboard password"
+                className="border px-4 py-3 rounded w-64 text-center"
+                autoFocus
+              />
+            </div>
+            <button 
+              type="submit"
+              className="bg-black text-white px-6 py-3 rounded w-full hover:bg-gray-800 transition-colors"
+            >
+              Enter Dashboard
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // Show dashboard if authenticated
+  return (
+    <div className="h-screen flex flex-col">
+      {/* HEADER */}
+      <header className="flex items-center gap-4 px-6 py-4 border-b">
+        <div className="font-semibold text-lg whitespace-nowrap">
+          Audio Send Log
+        </div>
+
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search name or email…"
+          className="border px-3 py-2 rounded text-sm flex-1"
+        />
+
+        {/* DEV SETTING (später User Settings) */}
+        <select
+          value={priorityAfterDays}
+          onChange={e => setPriorityAfterDays(Number(e.target.value))}
+          className="border rounded px-2 py-2 text-sm"
+        >
+          <option value={14}>14 days</option>
+          <option value={30}>30 days</option>
+          <option value={60}>60 days</option>
+        </select>
+
+        <button className="rounded bg-black text-white px-4 py-2 text-sm">
+          Scan Sent Mails
+        </button>
+      </header>
+
+      {/* CONTENT */}
+      <main className="flex-1 overflow-auto">
+        <div className="min-w-[900px] px-4 py-4 space-y-6">
+          {categories.map(category => (
+            <CategoryBlock
+              key={category.id}
+              title={category.name}
+              contacts={filterContacts(
+                contacts.filter(c => c.categoryId === category.id),
+                search
+              )}
+              priorityAfterDays={priorityAfterDays}
+            />
+          ))}
+
+          <CategoryBlock
+            title="Uncategorized"
+            contacts={filterContacts(
+              contacts.filter(c => !c.categoryId),
+              search
+            )}
+            priorityAfterDays={priorityAfterDays}
+          />
+        </div>
+      </main>
     </div>
   )
 }
