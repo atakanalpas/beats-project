@@ -1,54 +1,61 @@
-// app/api/auth/[...nextauth]/route.ts
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+// app/api/contacts/route.ts
+import { getServerSession } from "next-auth";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth-options";
 
-import NextAuth from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+export async function GET() {
+  try {
+    // Session mit authOptions holen
+    const session = await getServerSession(authOptions);
 
-// Dynamische Basis-URL ermitteln
-const getBaseUrl = () => {
-  // In Production/Staging: Environment Variable
-  if (process.env.NEXTAUTH_URL) {
-    return process.env.NEXTAUTH_URL;
+    // Session debugging
+    console.log("Session in API:", session);
+
+    if (!session || !session.user) {
+      console.log("No session or user found");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Type assertion für den User
+    const userId = (session.user as any).id;
+    
+    if (!userId) {
+      console.log("No user ID in session:", session.user);
+      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
+    }
+
+    // User mit Prisma finden
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        contacts: {
+          orderBy: { position: "asc" },
+          include: {
+            sentMails: {
+              orderBy: { sentAt: "desc" },
+              include: {
+                attachments: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      console.log("User not found in database for ID:", userId);
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    console.log("Found contacts for user:", user.contacts.length);
+    return NextResponse.json(user.contacts ?? []);
+
+  } catch (error) {
+    console.error("Error in GET /api/contacts:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  
-  // In GitHub Codespaces/Vercel Preview: aus NEXT_PUBLIC_VERCEL_URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  
-  // Fallback für lokale Entwicklung
-  return "http://localhost:3000";
-};
-
-const handler = NextAuth({
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-  ],
-  session: {
-    strategy: "jwt",
-  },
-  secret: process.env.NEXTAUTH_SECRET!,
-  callbacks: {
-    async session({ session, token }) {
-      if (session.user && token.sub) {
-        (session.user as any).id = token.sub;
-      }
-      return session;
-    },
-    async redirect({ url, baseUrl }) {
-      // Verwende die dynamische Basis-URL
-      const actualBaseUrl = getBaseUrl();
-      if (url.startsWith("/")) {
-        return `${actualBaseUrl}${url}`;
-      }
-      return url;
-    },
-  },
-  debug: true, // Für Debugging in Codespaces aktivieren
-});
-
-export { handler as GET, handler as POST };
+}
