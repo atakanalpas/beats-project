@@ -33,6 +33,32 @@ type ManualDraft = {
   contactId?: string
 }
 
+/* ================= MOCK FALLBACK ================= */
+
+const MOCK_CONTACTS: Contact[] = [
+  {
+    id: "c1",
+    name: "Max Producer",
+    email: "max@beats.com",
+    sentMails: [
+      {
+        id: "m1",
+        sentAt: "2024-09-12",
+        attachments: [
+          { id: "a1", filename: "beat_140bpm.wav" },
+          { id: "a2", filename: "beat_alt.wav" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "c2",
+    name: "Lisa Songwriter",
+    email: "lisa@studio.com",
+    sentMails: []
+  }
+]
+
 /* ================= HELPERS ================= */
 
 function filterContacts(list: Contact[], search: string) {
@@ -67,40 +93,30 @@ function getCardOpacity(sentAt: string) {
   return "opacity-40"
 }
 
-/* ================= SUB-COMPONENTS ================= */
+/* ================= COMPONENTS ================= */
 
-function CategoryBlock({
-  title,
-  contacts,
-  priorityAfterDays,
-  manualDraft,
-  setManualDraft
-}: {
-  title: string
-  contacts: Contact[]
-  priorityAfterDays: number
-  manualDraft: ManualDraft | null
-  setManualDraft: React.Dispatch<React.SetStateAction<ManualDraft | null>>
-}) {
-  if (contacts.length === 0) return null
-
+function SentMailCard({ mail }: { mail: SentMail }) {
   return (
-    <div>
-      <div className="mb-1 text-xs font-semibold text-gray-500 uppercase">
-        {title}
+    <div
+      className={`min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] ${getCardOpacity(
+        mail.sentAt
+      )}`}
+    >
+      <div className="text-[10px] text-gray-400 mb-1">
+        {new Date(mail.sentAt).toLocaleDateString()}
       </div>
 
-      <div className="border rounded overflow-hidden">
-        {contacts.map(contact => (
-          <ContactRow
-            key={contact.id}
-            contact={contact}
-            priorityAfterDays={priorityAfterDays}
-            manualDraft={manualDraft}
-            setManualDraft={setManualDraft}
-          />
+      {mail.note && (
+        <div className="italic text-gray-600">{mail.note}</div>
+      )}
+
+      <ul>
+        {mail.attachments.map(att => (
+          <li key={att.id} className="truncate text-gray-700">
+            {att.filename}
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   )
 }
@@ -129,25 +145,24 @@ function ContactRow({
         const id = e.dataTransfer.getData("manualDraft")
         if (!id) return
 
-        setManualDraft(draft =>
-          draft ? { ...draft, contactId: contact.id } : draft
+        setManualDraft(d =>
+          d ? { ...d, contactId: contact.id } : d
         )
       }}
     >
       {/* LEFT */}
       <div className="sticky left-0 z-10 bg-white border-r flex">
-        <div className={`w-1 ${getStatusColor(lastSent, priorityAfterDays)}`}/>
-
+        <div
+          className={`w-1 ${getStatusColor(
+            lastSent,
+            priorityAfterDays
+          )}`}
+        />
         <div className="px-4 py-2">
           <div className="font-medium text-sm">{contact.name}</div>
           <div className="text-[11px] text-gray-400 truncate">
             {contact.email}
           </div>
-          {lastSent && (
-            <div className="text-[10px] text-gray-400 mt-0.5">
-              last sent {new Date(lastSent).toLocaleDateString()}
-            </div>
-          )}
         </div>
       </div>
 
@@ -160,9 +175,6 @@ function ContactRow({
 
           {manualDraft?.contactId === contact.id && (
             <div className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]">
-              <div className="text-[10px] text-gray-400 mb-1">
-                {new Date(manualDraft.sentAt).toLocaleDateString()}
-              </div>
               <textarea
                 placeholder="Add note…"
                 value={manualDraft.note ?? ""}
@@ -182,32 +194,6 @@ function ContactRow({
   )
 }
 
-function SentMailCard({ mail }: { mail: SentMail }) {
-  return (
-    <div
-      className={`min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] ${getCardOpacity(
-        mail.sentAt
-      )}`}
-    >
-      <div className="text-[10px] text-gray-400 mb-1">
-        {new Date(mail.sentAt).toLocaleDateString()}
-      </div>
-
-      {mail.note && (
-        <div className="text-gray-600 italic">{mail.note}</div>
-      )}
-
-      <ul>
-        {mail.attachments.map(att => (
-          <li key={att.id} className="truncate text-gray-700">
-            {att.filename}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
@@ -217,14 +203,22 @@ export default function DashboardPage() {
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
   const [manualDraft, setManualDraft] = useState<ManualDraft | null>(null)
 
+  // Add Contact modal
+  const [showAddContact, setShowAddContact] = useState(false)
+  const [newName, setNewName] = useState("")
+  const [newEmail, setNewEmail] = useState("")
+
   useEffect(() => {
     fetch("/api/dashboard")
       .then(res => res.json())
       .then(data => {
-        setContacts(data)
+        setContacts(data?.length ? data : MOCK_CONTACTS)
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(() => {
+        setContacts(MOCK_CONTACTS)
+        setLoading(false)
+      })
   }, [])
 
   if (loading) {
@@ -263,27 +257,37 @@ export default function DashboardPage() {
         </button>
 
         <button
+          onClick={() => setShowAddContact(true)}
+          className="border border-dashed px-4 py-2 rounded text-sm"
+        >
+          + Add contact
+        </button>
+
+        <button
           onClick={() =>
             setManualDraft({
               id: crypto.randomUUID(),
               sentAt: new Date().toISOString()
             })
           }
-          className="border border-dashed px-4 py-2 rounded text-sm text-gray-600"
+          className="border border-dashed px-4 py-2 rounded text-sm"
         >
           + Manual send
         </button>
       </header>
 
+      {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-6">
-          <CategoryBlock
-            title="Uncategorized"
-            contacts={filterContacts(contacts, search)}
-            priorityAfterDays={priorityAfterDays}
-            manualDraft={manualDraft}
-            setManualDraft={setManualDraft}
-          />
+          {filterContacts(contacts, search).map(contact => (
+            <ContactRow
+              key={contact.id}
+              contact={contact}
+              priorityAfterDays={priorityAfterDays}
+              manualDraft={manualDraft}
+              setManualDraft={setManualDraft}
+            />
+          ))}
         </div>
       </main>
 
@@ -298,6 +302,66 @@ export default function DashboardPage() {
         >
           <div className="font-medium mb-1">Manual send</div>
           <div className="italic">Drag onto the board</div>
+        </div>
+      )}
+
+      {/* ADD CONTACT MODAL */}
+      {showAddContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-lg p-6 w-80">
+            <h2 className="text-sm font-semibold mb-4">
+              Add new contact
+            </h2>
+
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Name"
+              className="w-full border px-3 py-2 rounded text-sm mb-2"
+              autoFocus
+            />
+
+            <input
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full border px-3 py-2 rounded text-sm mb-4"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAddContact(false)
+                  setNewName("")
+                  setNewEmail("")
+                }}
+                className="text-sm text-gray-500"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!newName || !newEmail) return
+                  setContacts(prev => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      name: newName,
+                      email: newEmail.toLowerCase().trim(),
+                      sentMails: []
+                    }
+                  ])
+                  setShowAddContact(false)
+                  setNewName("")
+                  setNewEmail("")
+                }}
+                className="bg-black text-white px-4 py-2 rounded text-sm"
+              >
+                Add
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
