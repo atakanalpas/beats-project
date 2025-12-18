@@ -1,27 +1,59 @@
 // app/api/auth/[...nextauth]/route.ts
+// app/api/auth/[...nextauth]/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import NextAuth from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 
-// EXPLIZITE URL für Ihren Codespace
-const CODESPACE_URL = "https://scaling-space-succostash-3000.app.github.dev";
+// FORCE localhost für Entwicklung
+const BASE_URL = "http://localhost:3000";
 
 const handler = NextAuth({
   adapter: PrismaAdapter(prisma),
   
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      // WICHTIG: redirect_uri explizit setzen
-      authorization: {
-        params: {
-          redirect_uri: `${CODESPACE_URL}/api/auth/callback/google`,
+    CredentialsProvider({
+      name: "Development",
+      credentials: {
+        email: { 
+          label: "Email", 
+          type: "text", 
+          placeholder: "test@test.com" 
         },
+      },
+      async authorize(credentials) {
+        try {
+          console.log("🔐 Login attempt:", credentials?.email);
+          
+          const email = credentials?.email || "test@test.com";
+          
+          let user = await prisma.user.findUnique({
+            where: { email: email },
+          });
+          
+          if (!user) {
+            console.log("🔐 Creating user:", email);
+            user = await prisma.user.create({
+              data: {
+                email: email,
+                name: "Development User",
+              },
+            });
+          }
+          
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name || "Dev User",
+          };
+          
+        } catch (error) {
+          console.error("🔐 Auth error:", error);
+          return null;
+        }
       },
     }),
   ],
@@ -35,7 +67,7 @@ const handler = NextAuth({
   callbacks: {
     async session({ session, token }) {
       if (session.user && token.sub) {
-        (session.user as any).id = token.sub;
+        session.user.id = token.sub;
       }
       return session;
     },
@@ -47,25 +79,33 @@ const handler = NextAuth({
       return token;
     },
 
-    // WICHTIG: redirect callback hinzufügen
+    // WICHTIG: Redirects zu localhost erzwingen
     async redirect({ url, baseUrl }) {
-      console.log("🔐 Redirect callback - Using URL:", CODESPACE_URL);
-      // Immer zu unserer Codespaces URL leiten
-      if (url.startsWith("/")) {
-        return `${CODESPACE_URL}${url}`;
+      console.log("🔐 Redirect - FORCING localhost");
+      
+      // Immer zu localhost leiten
+      if (url.includes("vercel.app")) {
+        return BASE_URL;
       }
-      // Falls Google eine vollständige URL zurückgibt
-      return url.includes("accounts.google.com") ? CODESPACE_URL : url;
+      
+      return url.startsWith("/") ? `${BASE_URL}${url}` : BASE_URL;
     },
+  },
+  
+  // URLs für NextAuth explizit setzen
+  theme: {
+    colorScheme: "auto",
+  },
+  
+  pages: {
+    signIn: `${BASE_URL}`,
+    error: `${BASE_URL}`,
   },
   
   debug: true,
 });
 
-// Debug logging
-console.log("🔐 Auth Configuration:");
-console.log("CODESPACE_URL:", CODESPACE_URL);
-console.log("NEXTAUTH_URL from env:", process.env.NEXTAUTH_URL);
-console.log("Google Client ID exists:", !!process.env.GOOGLE_CLIENT_ID);
+console.log("🔐 Auth configured for:", BASE_URL);
+console.log("🔐 NEXTAUTH_URL from env:", process.env.NEXTAUTH_URL);
 
 export { handler as GET, handler as POST };

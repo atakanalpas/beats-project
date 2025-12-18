@@ -13,6 +13,8 @@ type SentMail = {
   id: string
   sentAt: string
   attachments: Attachment[]
+  note?: string
+  source?: "gmail" | "manual"
 }
 
 type Contact = {
@@ -22,6 +24,13 @@ type Contact = {
   category?: string | null
   position?: number
   sentMails: SentMail[]
+}
+
+type ManualDraft = {
+  id: string
+  sentAt: string
+  note?: string
+  contactId?: string
 }
 
 /* ================= HELPERS ================= */
@@ -35,10 +44,7 @@ function filterContacts(list: Contact[], search: string) {
   )
 }
 
-function getStatusColor(
-  lastSentAt?: string,
-  priorityAfterDays: number = 30
-) {
+function getStatusColor(lastSentAt?: string, priorityAfterDays = 30) {
   if (!lastSentAt) return "bg-gray-300"
 
   const days =
@@ -66,11 +72,15 @@ function getCardOpacity(sentAt: string) {
 function CategoryBlock({
   title,
   contacts,
-  priorityAfterDays
+  priorityAfterDays,
+  manualDraft,
+  setManualDraft
 }: {
   title: string
   contacts: Contact[]
   priorityAfterDays: number
+  manualDraft: ManualDraft | null
+  setManualDraft: React.Dispatch<React.SetStateAction<ManualDraft | null>>
 }) {
   if (contacts.length === 0) return null
 
@@ -81,15 +91,15 @@ function CategoryBlock({
       </div>
 
       <div className="border rounded overflow-hidden">
-        {contacts
-          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-          .map(contact => (
-            <ContactRow
-              key={contact.id}
-              contact={contact}
-              priorityAfterDays={priorityAfterDays}
-            />
-          ))}
+        {contacts.map(contact => (
+          <ContactRow
+            key={contact.id}
+            contact={contact}
+            priorityAfterDays={priorityAfterDays}
+            manualDraft={manualDraft}
+            setManualDraft={setManualDraft}
+          />
+        ))}
       </div>
     </div>
   )
@@ -97,42 +107,45 @@ function CategoryBlock({
 
 function ContactRow({
   contact,
-  priorityAfterDays
+  priorityAfterDays,
+  manualDraft,
+  setManualDraft
 }: {
   contact: Contact
   priorityAfterDays: number
+  manualDraft: ManualDraft | null
+  setManualDraft: React.Dispatch<React.SetStateAction<ManualDraft | null>>
 }) {
   const lastSent =
     contact.sentMails.length > 0
       ? contact.sentMails[0].sentAt
       : undefined
 
-  const MAX_VISIBLE = 4
-  const visibleMails = contact.sentMails.slice(0, MAX_VISIBLE)
-  const hiddenCount = contact.sentMails.length - MAX_VISIBLE
-
   return (
-    <div className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50">
+    <div
+      className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50"
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => {
+        const id = e.dataTransfer.getData("manualDraft")
+        if (!id) return
+
+        setManualDraft(draft =>
+          draft ? { ...draft, contactId: contact.id } : draft
+        )
+      }}
+    >
       {/* LEFT */}
       <div className="sticky left-0 z-10 bg-white border-r flex">
-        <div
-          className={`w-1 ${getStatusColor(
-            lastSent,
-            priorityAfterDays
-          )}`}
-        />
+        <div className={`w-1 ${getStatusColor(lastSent, priorityAfterDays)}`}/>
 
         <div className="px-4 py-2">
-          <div className="font-medium text-sm">
-            {contact.name}
-          </div>
+          <div className="font-medium text-sm">{contact.name}</div>
           <div className="text-[11px] text-gray-400 truncate">
             {contact.email}
           </div>
           {lastSent && (
             <div className="text-[10px] text-gray-400 mt-0.5">
-              last sent{" "}
-              {new Date(lastSent).toLocaleDateString()}
+              last sent {new Date(lastSent).toLocaleDateString()}
             </div>
           )}
         </div>
@@ -141,20 +154,27 @@ function ContactRow({
       {/* RIGHT */}
       <div className="overflow-x-auto">
         <div className="flex gap-2 px-3 py-2 items-center">
-          {visibleMails.map(mail => (
+          {contact.sentMails.map(mail => (
             <SentMailCard key={mail.id} mail={mail} />
           ))}
 
-          {hiddenCount > 0 && (
-            <div className="min-w-[80px] flex items-center justify-center text-xs text-gray-400 border rounded">
-              +{hiddenCount} more
+          {manualDraft?.contactId === contact.id && (
+            <div className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]">
+              <div className="text-[10px] text-gray-400 mb-1">
+                {new Date(manualDraft.sentAt).toLocaleDateString()}
+              </div>
+              <textarea
+                placeholder="Add note…"
+                value={manualDraft.note ?? ""}
+                onChange={e =>
+                  setManualDraft(d =>
+                    d ? { ...d, note: e.target.value } : d
+                  )
+                }
+                className="w-full resize-none border-none p-0 focus:outline-none"
+                rows={2}
+              />
             </div>
-          )}
-
-          {contact.sentMails.length === 0 && (
-            <span className="text-[11px] text-gray-300 italic">
-              nothing sent yet
-            </span>
           )}
         </div>
       </div>
@@ -165,13 +185,17 @@ function ContactRow({
 function SentMailCard({ mail }: { mail: SentMail }) {
   return (
     <div
-      className={`min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${getCardOpacity(
+      className={`min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] ${getCardOpacity(
         mail.sentAt
       )}`}
     >
       <div className="text-[10px] text-gray-400 mb-1">
         {new Date(mail.sentAt).toLocaleDateString()}
       </div>
+
+      {mail.note && (
+        <div className="text-gray-600 italic">{mail.note}</div>
+      )}
 
       <ul>
         {mail.attachments.map(att => (
@@ -191,6 +215,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
+  const [manualDraft, setManualDraft] = useState<ManualDraft | null>(null)
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -210,17 +235,11 @@ export default function DashboardPage() {
     )
   }
 
-  const categorized = {
-    Uncategorized: contacts.filter(c => !c.category)
-  }
-
   return (
     <div className="h-screen flex flex-col">
       {/* HEADER */}
       <header className="flex items-center gap-4 px-6 py-4 border-b">
-        <div className="font-semibold text-lg whitespace-nowrap">
-          Audio Send Log
-        </div>
+        <div className="font-semibold text-lg">Audio Send Log</div>
 
         <input
           value={search}
@@ -242,17 +261,45 @@ export default function DashboardPage() {
         <button className="rounded bg-black text-white px-4 py-2 text-sm">
           Scan Sent Mails
         </button>
+
+        <button
+          onClick={() =>
+            setManualDraft({
+              id: crypto.randomUUID(),
+              sentAt: new Date().toISOString()
+            })
+          }
+          className="border border-dashed px-4 py-2 rounded text-sm text-gray-600"
+        >
+          + Manual send
+        </button>
       </header>
 
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-6">
           <CategoryBlock
             title="Uncategorized"
-            contacts={filterContacts(categorized.Uncategorized, search)}
+            contacts={filterContacts(contacts, search)}
             priorityAfterDays={priorityAfterDays}
+            manualDraft={manualDraft}
+            setManualDraft={setManualDraft}
           />
         </div>
       </main>
+
+      {/* FLOATING DRAFT */}
+      {manualDraft && !manualDraft.contactId && (
+        <div
+          draggable
+          onDragStart={e =>
+            e.dataTransfer.setData("manualDraft", manualDraft.id)
+          }
+          className="fixed bottom-6 right-6 z-50 w-48 cursor-grab rounded border border-dashed bg-white p-3 text-xs text-gray-500 shadow"
+        >
+          <div className="font-medium mb-1">Manual send</div>
+          <div className="italic">Drag onto the board</div>
+        </div>
+      )}
     </div>
   )
 }

@@ -56,6 +56,13 @@ export default function Home() {
               </div>
             </div>
             
+            {/* DEBUG INFO */}
+            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+              <p className="text-sm text-gray-600 dark:text-gray-400">Debug Info:</p>
+              <p className="text-xs">User ID: {(session.user as any)?.id || "No ID"}</p>
+              <p className="text-xs">Email: {session.user?.email}</p>
+            </div>
+            
             <button
               onClick={() => signOut()}
               className="mt-4 px-6 py-3 text-base font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
@@ -98,6 +105,18 @@ export default function Home() {
             Create, share, and discover amazing beats. Sign in to get started.
           </p>
           
+          {/* DEVELOPMENT LOGIN BUTTON */}
+          <button
+            onClick={() => signIn("credentials", { email: "test@test.com" })}
+            className="mt-4 inline-flex items-center justify-center gap-3 px-6 py-3 text-base font-medium text-white bg-green-600 rounded-lg hover:bg-green-700"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Development Login (Test)
+          </button>
+          
+          {/* ODER Google Button (für später) */}
           <button
             onClick={() => signIn("google")}
             className="mt-4 inline-flex items-center justify-center gap-3 px-6 py-3 text-base font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
@@ -108,7 +127,7 @@ export default function Home() {
               <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
               <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
             </svg>
-            Sign in with Google
+            Sign in with Google (Not working in Codespaces)
           </button>
         </div>
         
