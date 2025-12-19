@@ -128,6 +128,7 @@ function SentMailCard({
           {new Date(mail.sentAt).toLocaleDateString()}
         </div>
 
+        {/* 📝 BUTTON oben rechts */}
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
@@ -396,8 +397,9 @@ function ContactRow({
                   {new Date(draft.sentAt).toLocaleDateString()}
                 </div>
 
+                {/* ÄNDERUNG: "Add note..." zu "Add..." */}
                 <textarea
-                  placeholder="Add note…"
+                  placeholder="Add..."
                   value={draft.note ?? ""}
                   onChange={e =>
                     setManualDrafts(prev =>
@@ -437,7 +439,8 @@ function CategorySection({
   onUpdateContactName,
   onUpdateContactEmail,
   onDeleteContact,
-  onDeleteMail
+  onDeleteMail,
+  onDragContactToCategory
 }: {
   category: Category
   isDeletingMode: boolean
@@ -455,6 +458,7 @@ function CategorySection({
   onUpdateContactEmail: (contactId: string, email: string) => void
   onDeleteContact: (contactId: string) => void
   onDeleteMail: (contactId: string, mailId: string) => void
+  onDragContactToCategory: (contactId: string, categoryId: string) => void
 }) {
   const [isEditingCategory, setIsEditingCategory] = useState(false)
   const [tempCategoryName, setTempCategoryName] = useState(category.name)
@@ -480,9 +484,7 @@ function CategorySection({
         const contactId = e.dataTransfer.getData("contact")
         if (!contactId) return
 
-        // Hier müssen wir die Kontakte aktualisieren
-        // Dafür brauchen wir die setContacts-Funktion
-        // Daher lasse ich diesen Teil weg - er wird in der Hauptkomponente gehandhabt
+        onDragContactToCategory(contactId, category.id)
       }}
     >
       {/* CATEGORY HEADER */}
@@ -706,6 +708,7 @@ export default function DashboardPage() {
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
   const [showAddMenu, setShowAddMenu] = useState(false)
+  const [showImportExportMenu, setShowImportExportMenu] = useState(false)
   const [isDeletingMode, setIsDeletingMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState<string[]>([])
 
@@ -824,18 +827,26 @@ export default function DashboardPage() {
     }
   }
 
-  // Funktion zum Löschen einer Kategorie
-  const handleDeleteCategory = (categoryId: string) => {
-    if (confirm("Delete this category? Contacts will be moved to Uncategorized.")) {
-      setCategories(prev => prev.filter(c => c.id !== categoryId))
-      setContacts(prev =>
-        prev.map(c =>
-          c.categoryId === categoryId
-            ? { ...c, categoryId: null }
-            : c
-        )
+  // Drag & Drop Handler für Kategorien
+  const handleDragContactToCategory = (contactId: string, categoryId: string) => {
+    setContacts(prev =>
+      prev.map(c =>
+        c.id === contactId
+          ? { ...c, categoryId }
+          : c
       )
-    }
+    )
+  }
+
+  // Drag & Drop Handler für Uncategorized
+  const handleDragContactToUncategorized = (contactId: string) => {
+    setContacts(prev =>
+      prev.map(c =>
+        c.id === contactId
+          ? { ...c, categoryId: null }
+          : c
+      )
+    )
   }
 
   // Auswahl-Logik für Delete Mode
@@ -847,52 +858,72 @@ export default function DashboardPage() {
     )
   }
 
-  // Alle ausgewählten Items löschen
+  // Alle ausgewählten Items löschen (nur EINE Bestätigung)
   const handleDeleteSelected = () => {
     if (selectedItems.length === 0) return
     
-    if (confirm(`Delete ${selectedItems.length} selected items?`)) {
+    // Zähle Kontakte und Kategorien
+    const contactIds = selectedItems.filter(id => id.startsWith("contact_"))
+    const categoryIds = selectedItems.filter(id => id.startsWith("category_"))
+    
+    // Erstelle eine Bestätigungsnachricht basierend auf was ausgewählt ist
+    let message = ""
+    if (contactIds.length > 0 && categoryIds.length > 0) {
+      message = `Delete ${contactIds.length} contact(s) and ${categoryIds.length} category(ies)? Contacts in categories will be moved to Uncategorized.`
+    } else if (contactIds.length > 0) {
+      message = `Delete ${contactIds.length} selected contact(s)?`
+    } else if (categoryIds.length > 0) {
+      message = `Delete ${categoryIds.length} selected category(ies)? Contacts will be moved to Uncategorized.`
+    }
+    
+    if (confirm(message)) {
       // Kontakte löschen
-      const contactIds = selectedItems.filter(id => id.startsWith("contact_"))
       if (contactIds.length > 0) {
         setContacts(prev => 
           prev.filter(c => !contactIds.includes(`contact_${c.id}`))
         )
       }
       
-      // Kategorien löschen
-      const categoryIds = selectedItems.filter(id => id.startsWith("category_"))
+      // Kategorien löschen und deren Kontakte auf Uncategorized setzen
       if (categoryIds.length > 0) {
-        categoryIds.forEach(catId => {
-          const categoryId = catId.replace("category_", "")
-          handleDeleteCategory(categoryId)
-        })
+        const categoryIdsOnly = categoryIds.map(id => id.replace("category_", ""))
+        
+        // Kategorien löschen
+        setCategories(prev => prev.filter(c => !categoryIdsOnly.includes(c.id)))
+        
+        // Kontakte auf Uncategorized setzen
+        setContacts(prev =>
+          prev.map(c =>
+            c.categoryId && categoryIdsOnly.includes(c.categoryId)
+              ? { ...c, categoryId: null }
+              : c
+          )
+        )
       }
       
       setSelectedItems([])
     }
   }
 
-  // Drag & Drop Handler für Kategorien
-  const handleDropOnCategory = (categoryId: string, contactId: string) => {
-    setContacts(prev =>
-      prev.map(c =>
-        c.id === contactId
-          ? { ...c, categoryId }
-          : c
-      )
-    )
+  // IMPORT/EXPORT FUNKTIONEN
+  const handleExportToExcel = () => {
+    alert("Export to Excel would be implemented here")
+    setShowImportExportMenu(false)
   }
 
-  // Drag & Drop Handler für Uncategorized
-  const handleDropOnUncategorized = (contactId: string) => {
-    setContacts(prev =>
-      prev.map(c =>
-        c.id === contactId
-          ? { ...c, categoryId: null }
-          : c
-      )
-    )
+  const handleExportToSheets = () => {
+    alert("Export to Google Sheets would be implemented here")
+    setShowImportExportMenu(false)
+  }
+
+  const handleExportToPages = () => {
+    alert("Export to Apple Pages would be implemented here")
+    setShowImportExportMenu(false)
+  }
+
+  const handleImportList = () => {
+    alert("Import list would be implemented here")
+    setShowImportExportMenu(false)
   }
 
   useEffect(() => {
@@ -917,6 +948,9 @@ export default function DashboardPage() {
     )
   }
 
+  // Berechne ob Uncategorized angezeigt werden soll
+  const hasUncategorizedContacts = contacts.filter(c => !c.categoryId).length > 0
+
   return (
     <div className="h-screen flex flex-col">
       {/* HEADER */}
@@ -930,10 +964,81 @@ export default function DashboardPage() {
           {/* SUCHLEISTE (neben + Button) */}
           <ExpandingSearchBar search={search} setSearch={setSearch} />
 
+          {/* IMPORT/EXPORT BUTTON */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowImportExportMenu(v => !v)
+                setShowAddMenu(false)
+              }}
+              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Import/Export"
+            >
+              📊
+            </button>
+            
+            {/* IMPORT/EXPORT MENÜ */}
+            {showImportExportMenu && (
+              <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+                <button
+                  onClick={handleImportList}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                >
+                  <span className="text-lg">📥</span>
+                  <div>
+                    <div className="font-medium">Import List</div>
+                    <div className="text-xs text-gray-500">Import contacts from file</div>
+                  </div>
+                </button>
+                
+                <div className="border-t pt-1">
+                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+                    Export list as
+                  </div>
+                  <button
+                    onClick={handleExportToExcel}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <span className="text-lg">📊</span>
+                    <div>
+                      <div className="font-medium">Excel</div>
+                      <div className="text-xs text-gray-500">Export to Excel spreadsheet</div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={handleExportToSheets}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <span className="text-lg">📈</span>
+                    <div>
+                      <div className="font-medium">Sheets</div>
+                      <div className="text-xs text-gray-500">Export to Google Sheets</div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={handleExportToPages}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <span className="text-lg">📄</span>
+                    <div>
+                      <div className="font-medium">Pages</div>
+                      <div className="text-xs text-gray-500">Export to Apple Pages</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* ADD BUTTON */}
           <div className="relative">
             <button
-              onClick={() => setShowAddMenu(v => !v)}
+              onClick={() => {
+                setShowAddMenu(v => !v)
+                setShowImportExportMenu(false)
+              }}
               className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
               title="Add"
             >
@@ -979,6 +1084,7 @@ export default function DashboardPage() {
             onClick={() => {
               if (isDeletingMode && selectedItems.length > 0) {
                 handleDeleteSelected()
+                // Lösch-Modus bleibt aktiv nach Löschung
               } else {
                 setIsDeletingMode(!isDeletingMode)
                 if (!isDeletingMode) {
@@ -1019,7 +1125,7 @@ export default function DashboardPage() {
               selectedItems={selectedItems}
               onToggleSelection={toggleItemSelection}
               onUpdateCategoryName={updateCategoryName}
-              onDeleteCategory={handleDeleteCategory}
+              onDeleteCategory={() => {}} // Wird jetzt in handleDeleteSelected gehandhabt
               contacts={contacts}
               search={search}
               priorityAfterDays={priorityAfterDays}
@@ -1030,57 +1136,60 @@ export default function DashboardPage() {
               onUpdateContactEmail={updateContactEmail}
               onDeleteContact={handleDeleteContact}
               onDeleteMail={deleteMail}
+              onDragContactToCategory={handleDragContactToCategory}
             />
           ))}
 
-          {/* UNCATEGORIZED */}
-          <div
-            className="border rounded"
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => {
-              if (isDeletingMode) return
-              const contactId = e.dataTransfer.getData("contact")
-              if (!contactId) return
+          {/* UNCATEGORIZED (nur anzeigen wenn Kontakte vorhanden) */}
+          {hasUncategorizedContacts && (
+            <div
+              className="border rounded"
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                if (isDeletingMode) return
+                const contactId = e.dataTransfer.getData("contact")
+                if (!contactId) return
 
-              handleDropOnUncategorized(contactId)
-            }}
-          >
-            <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-b bg-gray-50">
-              Uncategorized
-            </div>
-
-            {filterContacts(
-              contacts.filter(c => !c.categoryId),
-              search
-            ).map(contact => (
-              <div key={contact.id} className="relative">
-                {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
-                {isDeletingMode && (
-                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
-                    <input
-                      type="checkbox"
-                      checked={selectedItems.includes(`contact_${contact.id}`)}
-                      onChange={() => toggleItemSelection(`contact_${contact.id}`)}
-                      className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
-                    />
-                  </div>
-                )}
-                
-                <ContactRow
-                  contact={contact}
-                  priorityAfterDays={priorityAfterDays}
-                  manualDrafts={manualDrafts}
-                  setManualDrafts={setManualDrafts}
-                  onUpdateMailNote={updateMailNote}
-                  onUpdateContactName={updateContactName}
-                  onUpdateContactEmail={updateContactEmail}
-                  onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
-                  onDeleteMail={isDeletingMode ? deleteMail : undefined}
-                  isDeleting={isDeletingMode}
-                />
+                handleDragContactToUncategorized(contactId)
+              }}
+            >
+              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-b bg-gray-50">
+                Uncategorized
               </div>
-            ))}
-          </div>
+
+              {filterContacts(
+                contacts.filter(c => !c.categoryId),
+                search
+              ).map(contact => (
+                <div key={contact.id} className="relative">
+                  {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
+                  {isDeletingMode && (
+                    <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(`contact_${contact.id}`)}
+                        onChange={() => toggleItemSelection(`contact_${contact.id}`)}
+                        className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
+                      />
+                    </div>
+                  )}
+                  
+                  <ContactRow
+                    contact={contact}
+                    priorityAfterDays={priorityAfterDays}
+                    manualDrafts={manualDrafts}
+                    setManualDrafts={setManualDrafts}
+                    onUpdateMailNote={updateMailNote}
+                    onUpdateContactName={updateContactName}
+                    onUpdateContactEmail={updateContactEmail}
+                    onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                    onDeleteMail={isDeletingMode ? deleteMail : undefined}
+                    isDeleting={isDeletingMode}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ADD CONTACT MODAL */}
           {showAddContact && (
