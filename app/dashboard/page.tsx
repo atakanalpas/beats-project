@@ -45,7 +45,7 @@ const MOCK_CONTACTS: Contact[] = [
     id: "c1",
     name: "Max Producer",
     email: "max@beats.com",
-    categoryId: "cat-1", // Hinzugefügt
+    categoryId: "cat-1",
     sentMails: [
       {
         id: "m1",
@@ -61,7 +61,7 @@ const MOCK_CONTACTS: Contact[] = [
     id: "c2",
     name: "Lisa Songwriter",
     email: "lisa@studio.com",
-    categoryId: "cat-2", // Hinzugefügt
+    categoryId: "cat-2",
     sentMails: []
   }
 ]
@@ -155,6 +155,10 @@ function ContactRow({
   manualDrafts,
   setManualDrafts,
   onUpdateMailNote,
+  onDeleteContact, // NEU: Lösch-Funktion
+  isDeleting, // NEU: Lösch-Modus
+  isSelected, // NEU: Auswahl-Status
+  onToggleSelect // NEU: Auswahl umschalten
 }: {
   contact: Contact
   priorityAfterDays: number
@@ -165,6 +169,10 @@ function ContactRow({
     mailId: string,
     note: string
   ) => void
+  onDeleteContact?: (contactId: string) => void // NEU
+  isDeleting?: boolean // NEU
+  isSelected?: boolean // NEU
+  onToggleSelect?: (contactId: string) => void // NEU
 }) {
   const lastSent =
     contact.sentMails.length > 0
@@ -173,7 +181,7 @@ function ContactRow({
 
   return (
     <div
-      className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50"
+      className={`grid grid-cols-[260px_1fr] border-b hover:bg-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
         const draftId = e.dataTransfer.getData("manualDraft")
@@ -189,10 +197,22 @@ function ContactRow({
       }}
     >
       {/* LEFT */}
-      <div className="sticky left-0 z-10 bg-white border-r flex">
+      <div className="sticky left-0 z-10 bg-inherit border-r flex">
+        {/* SELECTION CHECKBOX (nur im Lösch-Modus) */}
+        {isDeleting && onToggleSelect && (
+          <div className="px-3 flex items-center">
+            <input
+              type="checkbox"
+              checked={isSelected || false}
+              onChange={() => onToggleSelect(contact.id)}
+              className="h-4 w-4"
+            />
+          </div>
+        )}
+
         {/* DRAG HANDLE */}
         <div
-          draggable
+          draggable={!isDeleting} // Nicht draggable im Lösch-Modus
           onDragStart={e =>
             e.dataTransfer.setData("contact", contact.id)
           }
@@ -211,9 +231,18 @@ function ContactRow({
         />
 
         {/* CONTACT INFO */}
-        <div className="px-4 py-2">
+        <div className="px-4 py-2 flex-1">
           <div className="font-medium text-sm text-gray-900">
             {contact.name}
+            {isDeleting && onDeleteContact && (
+              <button
+                onClick={() => onDeleteContact(contact.id)}
+                className="ml-2 text-xs text-red-500 hover:text-red-700"
+                title="Delete this contact"
+              >
+                ✕
+              </button>
+            )}
           </div>
           <div className="text-[11px] text-gray-600 truncate">
             {contact.email}
@@ -242,22 +271,22 @@ function ContactRow({
                 className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]"
               >
                 <div className="flex justify-between items-center mb-1">
-  <div className="text-[10px] text-gray-500">
-    {new Date(draft.sentAt).toLocaleDateString()}
-  </div>
+                  <div className="text-[10px] text-gray-500">
+                    {new Date(draft.sentAt).toLocaleDateString()}
+                  </div>
 
-  <button
-    onClick={() =>
-      setManualDrafts(prev =>
-        prev.filter(d => d.id !== draft.id)
-      )
-    }
-    className="text-[10px] text-gray-400 hover:text-red-500"
-    title="Delete manual card"
-  >
-    ✕
-  </button>
-</div>
+                  <button
+                    onClick={() =>
+                      setManualDrafts(prev =>
+                        prev.filter(d => d.id !== draft.id)
+                      )
+                    }
+                    className="text-[10px] text-gray-400 hover:text-red-500"
+                    title="Delete manual card"
+                  >
+                    ✕
+                  </button>
+                </div>
 
                 <textarea
                   placeholder="Add note…"
@@ -285,7 +314,10 @@ function ContactRow({
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<Category[]>([
+    { id: "cat-1", name: "Producer" },
+    { id: "cat-2", name: "Songwriter" }
+  ])
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
@@ -293,7 +325,12 @@ export default function DashboardPage() {
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
+  
+  // NEUE STATES FÜR LÖSCH-FUNKTIONALITÄT
   const [showAddMenu, setShowAddMenu] = useState(false)
+  const [isDeletingMode, setIsDeletingMode] = useState(false)
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
   // ADD CONTACT
   const [showAddContact, setShowAddContact] = useState(false)
@@ -353,6 +390,79 @@ export default function DashboardPage() {
     setShowAddCategory(false)
   }
 
+  // NEU: Kontakt löschen
+  const handleDeleteContact = (contactId: string) => {
+    if (confirm("Are you sure you want to delete this contact?")) {
+      setContacts(prev => prev.filter(c => c.id !== contactId))
+    }
+  }
+
+  // NEU: Kategorie löschen
+  const handleDeleteCategory = (categoryId: string) => {
+    if (confirm("Delete this category? Contacts will be moved to Uncategorized.")) {
+      // Kategorie löschen
+      setCategories(prev => prev.filter(c => c.id !== categoryId))
+      
+      // Kontakte auf Uncategorized setzen
+      setContacts(prev =>
+        prev.map(c =>
+          c.categoryId === categoryId
+            ? { ...c, categoryId: null }
+            : c
+        )
+      )
+    }
+  }
+
+  // NEU: Mehrere Kontakte löschen
+  const handleDeleteSelectedContacts = () => {
+    if (selectedContacts.length === 0) return
+    if (confirm(`Delete ${selectedContacts.length} selected contacts?`)) {
+      setContacts(prev => prev.filter(c => !selectedContacts.includes(c.id)))
+      setSelectedContacts([])
+      setIsDeletingMode(false)
+    }
+  }
+
+  // NEU: Kontakt-Auswahl umschalten
+  const toggleContactSelection = (contactId: string) => {
+    setSelectedContacts(prev =>
+      prev.includes(contactId)
+        ? prev.filter(id => id !== contactId)
+        : [...prev, contactId]
+    )
+  }
+
+  // NEU: Kategorie-Auswahl umschalten
+  const toggleCategorySelection = (categoryId: string) => {
+    setSelectedCategories(prev =>
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    )
+  }
+
+  // NEU: Kategorien mit Kontakten löschen
+  const handleDeleteSelectedCategories = () => {
+    if (selectedCategories.length === 0) return
+    if (confirm(`Delete ${selectedCategories.length} selected categories? Contacts will be moved to Uncategorized.`)) {
+      // Kategorien löschen
+      setCategories(prev => prev.filter(c => !selectedCategories.includes(c.id)))
+      
+      // Kontakte auf Uncategorized setzen
+      setContacts(prev =>
+        prev.map(c =>
+          selectedCategories.includes(c.categoryId || "")
+            ? { ...c, categoryId: null }
+            : c
+        )
+      )
+      
+      setSelectedCategories([])
+      setIsDeletingMode(false)
+    }
+  }
+
   useEffect(() => {
     fetch("/api/dashboard")
       .then(res => res.json())
@@ -386,13 +496,103 @@ export default function DashboardPage() {
           placeholder="Search name or email…"
           className="border px-3 py-2 rounded text-sm flex-1"
         />
+
+        {/* ADD BUTTON MIT MENÜ */}
+        <div className="relative">
+          <button
+            onClick={() => setShowAddMenu(v => !v)}
+            className="w-9 h-9 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50"
+            title="Add"
+          >
+            +
+          </button>
+          
+          {/* ADD MENÜ (wird angezeigt wenn showAddMenu true ist) */}
+          {showAddMenu && (
+            <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+              <button
+                onClick={() => {
+                  setShowAddContact(true)
+                  setShowAddMenu(false)
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span className="text-lg">👤</span>
+                <div>
+                  <div className="font-medium">Add Contact</div>
+                  <div className="text-xs text-gray-500">New person to track</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setShowAddCategory(true)
+                  setShowAddMenu(false)
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t"
+              >
+                <span className="text-lg">📁</span>
+                <div>
+                  <div className="font-medium">Add Category</div>
+                  <div className="text-xs text-gray-500">New group for contacts</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* LÖSCH-BUTTON */}
         <button
-          onClick={() => setShowAddMenu(v => !v)}
-          className="w-9 h-9 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50"
-          title="Add"
+          onClick={() => {
+            if (isDeletingMode) {
+              // Lösch-Modus beenden
+              setIsDeletingMode(false)
+              setSelectedContacts([])
+              setSelectedCategories([])
+            } else {
+              // Lösch-Modus aktivieren
+              setIsDeletingMode(true)
+            }
+          }}
+          className={`w-9 h-9 rounded-full border flex items-center justify-center ${
+            isDeletingMode 
+              ? 'bg-red-100 border-red-300 text-red-600' 
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+          title={isDeletingMode ? "Cancel delete mode" : "Delete items"}
         >
-          +
+          🗑️
         </button>
+
+        {/* AUSGEWÄHLTE LÖSCHEN BUTTON (nur im Lösch-Modus) */}
+        {isDeletingMode && (
+          <>
+            <button
+              onClick={handleDeleteSelectedContacts}
+              disabled={selectedContacts.length === 0}
+              className={`px-4 py-2 rounded text-sm ${
+                selectedContacts.length > 0
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              Delete Contacts ({selectedContacts.length})
+            </button>
+            
+            <button
+              onClick={handleDeleteSelectedCategories}
+              disabled={selectedCategories.length === 0}
+              className={`px-4 py-2 rounded text-sm ${
+                selectedCategories.length > 0
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              Delete Categories ({selectedCategories.length})
+            </button>
+          </>
+        )}
+
         <button className="rounded bg-black text-white px-4 py-2 text-sm">
           Scan Sent Mails
         </button>
@@ -408,6 +608,7 @@ export default function DashboardPage() {
               className="border rounded"
               onDragOver={e => e.preventDefault()}
               onDrop={e => {
+                if (isDeletingMode) return // Kein Drop im Lösch-Modus
                 const contactId = e.dataTransfer.getData("contact")
                 if (!contactId) return
 
@@ -420,43 +621,42 @@ export default function DashboardPage() {
                 )
               }}
             >
-              {/* CATEGORY HEADER (EDIT + DELETE) */}
-<div className="px-4 py-2 flex items-center justify-between border-b bg-gray-50">
-  <input
-    value={category.name}
-    onChange={e =>
-      setCategories(prev =>
-        prev.map(c =>
-          c.id === category.id
-            ? { ...c, name: e.target.value }
-            : c
-        )
-      )
-    }
-    className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700"
-  />
+              {/* CATEGORY HEADER (EDIT + DELETE + SELECTION) */}
+              <div className="px-4 py-2 flex items-center justify-between border-b bg-gray-50">
+                <div className="flex items-center gap-2 flex-1">
+                  {/* SELECTION CHECKBOX (nur im Lösch-Modus) */}
+                  {isDeletingMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedCategories.includes(category.id)}
+                      onChange={() => toggleCategorySelection(category.id)}
+                      className="h-4 w-4"
+                    />
+                  )}
+                  
+                  <input
+                    value={category.name}
+                    onChange={e =>
+                      setCategories(prev =>
+                        prev.map(c =>
+                          c.id === category.id
+                            ? { ...c, name: e.target.value }
+                            : c
+                        )
+                      )
+                    }
+                    className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700 flex-1"
+                  />
+                </div>
 
-  <button
-    onClick={() => {
-      // Kategorie löschen
-      setCategories(prev =>
-        prev.filter(c => c.id !== category.id)
-      )
-      // Kontakte zurück auf Uncategorized setzen
-      setContacts(prev =>
-        prev.map(c =>
-          c.categoryId === category.id
-            ? { ...c, categoryId: null }
-            : c
-        )
-      )
-    }}
-    className="text-xs text-gray-400 hover:text-red-500"
-    title="Delete category"
-  >
-    ✕
-  </button>
-</div>
+                <button
+                  onClick={() => handleDeleteCategory(category.id)}
+                  className="text-xs text-gray-400 hover:text-red-500 ml-2"
+                  title="Delete category"
+                >
+                  ✕
+                </button>
+              </div>
 
               {/* CONTACTS IN CATEGORY */}
               {filterContacts(
@@ -470,6 +670,10 @@ export default function DashboardPage() {
                   manualDrafts={manualDrafts}
                   setManualDrafts={setManualDrafts}
                   onUpdateMailNote={updateMailNote}
+                  onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                  isDeleting={isDeletingMode}
+                  isSelected={selectedContacts.includes(contact.id)}
+                  onToggleSelect={toggleContactSelection}
                 />
               ))}
             </div>
@@ -480,6 +684,7 @@ export default function DashboardPage() {
             className="border rounded"
             onDragOver={e => e.preventDefault()}
             onDrop={e => {
+              if (isDeletingMode) return // Kein Drop im Lösch-Modus
               const contactId = e.dataTransfer.getData("contact")
               if (!contactId) return
 
@@ -507,6 +712,10 @@ export default function DashboardPage() {
                 manualDrafts={manualDrafts}
                 setManualDrafts={setManualDrafts}
                 onUpdateMailNote={updateMailNote}
+                onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                isDeleting={isDeletingMode}
+                isSelected={selectedContacts.includes(contact.id)}
+                onToggleSelect={toggleContactSelection}
               />
             ))}
           </div>
