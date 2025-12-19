@@ -94,15 +94,30 @@ function getStatusColor(lastSentAt?: string, priorityAfterDays = 30) {
 
 function SentMailCard({
   mail,
-  onChangeNote
+  onChangeNote,
+  isDeleting,
+  onDeleteMail
 }: {
   mail: SentMail
   onChangeNote: (note: string) => void
+  isDeleting?: boolean
+  onDeleteMail?: () => void
 }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="min-w-[160px] rounded border bg-white px-2 py-2 text-[11px]">
+    <div className="min-w-[160px] rounded border bg-white px-2 py-2 text-[11px] relative">
+      {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
+      {isDeleting && onDeleteMail && (
+        <button
+          onClick={onDeleteMail}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
+          title="Delete this mail"
+        >
+          ✕
+        </button>
+      )}
+
       <div className="flex items-start justify-between gap-2">
         <div className="text-[10px] text-gray-500">
           {new Date(mail.sentAt).toLocaleDateString()}
@@ -155,10 +170,9 @@ function ContactRow({
   manualDrafts,
   setManualDrafts,
   onUpdateMailNote,
-  onDeleteContact, // NEU: Lösch-Funktion
-  isDeleting, // NEU: Lösch-Modus
-  isSelected, // NEU: Auswahl-Status
-  onToggleSelect // NEU: Auswahl umschalten
+  onDeleteContact,
+  onDeleteMail,
+  isDeleting
 }: {
   contact: Contact
   priorityAfterDays: number
@@ -169,10 +183,9 @@ function ContactRow({
     mailId: string,
     note: string
   ) => void
-  onDeleteContact?: (contactId: string) => void // NEU
-  isDeleting?: boolean // NEU
-  isSelected?: boolean // NEU
-  onToggleSelect?: (contactId: string) => void // NEU
+  onDeleteContact?: (contactId: string) => void
+  onDeleteMail?: (contactId: string, mailId: string) => void
+  isDeleting?: boolean
 }) {
   const lastSent =
     contact.sentMails.length > 0
@@ -181,9 +194,10 @@ function ContactRow({
 
   return (
     <div
-      className={`grid grid-cols-[260px_1fr] border-b hover:bg-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}
+      className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50"
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
+        if (isDeleting) return // Kein Drop im Lösch-Modus
         const draftId = e.dataTransfer.getData("manualDraft")
         if (!draftId) return
 
@@ -197,22 +211,21 @@ function ContactRow({
       }}
     >
       {/* LEFT */}
-      <div className="sticky left-0 z-10 bg-inherit border-r flex">
-        {/* SELECTION CHECKBOX (nur im Lösch-Modus) */}
-        {isDeleting && onToggleSelect && (
-          <div className="px-3 flex items-center">
-            <input
-              type="checkbox"
-              checked={isSelected || false}
-              onChange={() => onToggleSelect(contact.id)}
-              className="h-4 w-4"
-            />
-          </div>
+      <div className="sticky left-0 z-10 bg-white border-r flex">
+        {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
+        {isDeleting && onDeleteContact && (
+          <button
+            onClick={() => onDeleteContact(contact.id)}
+            className="px-3 flex items-center text-red-500 hover:text-red-700"
+            title="Delete this contact"
+          >
+            ✕
+          </button>
         )}
 
         {/* DRAG HANDLE */}
         <div
-          draggable={!isDeleting} // Nicht draggable im Lösch-Modus
+          draggable={!isDeleting}
           onDragStart={e =>
             e.dataTransfer.setData("contact", contact.id)
           }
@@ -231,18 +244,9 @@ function ContactRow({
         />
 
         {/* CONTACT INFO */}
-        <div className="px-4 py-2 flex-1">
+        <div className="px-4 py-2">
           <div className="font-medium text-sm text-gray-900">
             {contact.name}
-            {isDeleting && onDeleteContact && (
-              <button
-                onClick={() => onDeleteContact(contact.id)}
-                className="ml-2 text-xs text-red-500 hover:text-red-700"
-                title="Delete this contact"
-              >
-                ✕
-              </button>
-            )}
           </div>
           <div className="text-[11px] text-gray-600 truncate">
             {contact.email}
@@ -260,6 +264,8 @@ function ContactRow({
               onChangeNote={(note) =>
                 onUpdateMailNote(contact.id, mail.id, note)
               }
+              isDeleting={isDeleting}
+              onDeleteMail={() => onDeleteMail?.(contact.id, mail.id)}
             />
           ))}
 
@@ -268,24 +274,23 @@ function ContactRow({
             .map(draft => (
               <div
                 key={draft.id}
-                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]"
+                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px] relative"
               >
-                <div className="flex justify-between items-center mb-1">
-                  <div className="text-[10px] text-gray-500">
-                    {new Date(draft.sentAt).toLocaleDateString()}
-                  </div>
+                {/* LÖSCH-KREUZ für Manual Drafts (immer sichtbar) */}
+                <button
+                  onClick={() =>
+                    setManualDrafts(prev =>
+                      prev.filter(d => d.id !== draft.id)
+                    )
+                  }
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
+                  title="Delete manual card"
+                >
+                  ✕
+                </button>
 
-                  <button
-                    onClick={() =>
-                      setManualDrafts(prev =>
-                        prev.filter(d => d.id !== draft.id)
-                      )
-                    }
-                    className="text-[10px] text-gray-400 hover:text-red-500"
-                    title="Delete manual card"
-                  >
-                    ✕
-                  </button>
+                <div className="text-[10px] text-gray-500 mb-1">
+                  {new Date(draft.sentAt).toLocaleDateString()}
                 </div>
 
                 <textarea
@@ -325,12 +330,8 @@ export default function DashboardPage() {
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
-  
-  // NEUE STATES FÜR LÖSCH-FUNKTIONALITÄT
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [isDeletingMode, setIsDeletingMode] = useState(false)
-  const [selectedContacts, setSelectedContacts] = useState<string[]>([])
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
   // ADD CONTACT
   const [showAddContact, setShowAddContact] = useState(false)
@@ -351,6 +352,21 @@ export default function DashboardPage() {
             sentMails: contact.sentMails.map(mail =>
               mail.id === mailId ? { ...mail, note } : mail
             )
+          }
+        }
+        return contact
+      })
+    )
+  }
+
+  // Funktion zum Löschen einer Mail
+  const deleteMail = (contactId: string, mailId: string) => {
+    setContacts(prev =>
+      prev.map(contact => {
+        if (contact.id === contactId) {
+          return {
+            ...contact,
+            sentMails: contact.sentMails.filter(mail => mail.id !== mailId)
           }
         }
         return contact
@@ -390,14 +406,14 @@ export default function DashboardPage() {
     setShowAddCategory(false)
   }
 
-  // NEU: Kontakt löschen
+  // Funktion zum Löschen eines Kontakts
   const handleDeleteContact = (contactId: string) => {
     if (confirm("Are you sure you want to delete this contact?")) {
       setContacts(prev => prev.filter(c => c.id !== contactId))
     }
   }
 
-  // NEU: Kategorie löschen
+  // Funktion zum Löschen einer Kategorie
   const handleDeleteCategory = (categoryId: string) => {
     if (confirm("Delete this category? Contacts will be moved to Uncategorized.")) {
       // Kategorie löschen
@@ -414,52 +430,13 @@ export default function DashboardPage() {
     }
   }
 
-  // NEU: Mehrere Kontakte löschen
-  const handleDeleteSelectedContacts = () => {
-    if (selectedContacts.length === 0) return
-    if (confirm(`Delete ${selectedContacts.length} selected contacts?`)) {
-      setContacts(prev => prev.filter(c => !selectedContacts.includes(c.id)))
-      setSelectedContacts([])
-      setIsDeletingMode(false)
-    }
-  }
-
-  // NEU: Kontakt-Auswahl umschalten
-  const toggleContactSelection = (contactId: string) => {
-    setSelectedContacts(prev =>
-      prev.includes(contactId)
-        ? prev.filter(id => id !== contactId)
-        : [...prev, contactId]
-    )
-  }
-
-  // NEU: Kategorie-Auswahl umschalten
-  const toggleCategorySelection = (categoryId: string) => {
-    setSelectedCategories(prev =>
-      prev.includes(categoryId)
-        ? prev.filter(id => id !== categoryId)
-        : [...prev, categoryId]
-    )
-  }
-
-  // NEU: Kategorien mit Kontakten löschen
-  const handleDeleteSelectedCategories = () => {
-    if (selectedCategories.length === 0) return
-    if (confirm(`Delete ${selectedCategories.length} selected categories? Contacts will be moved to Uncategorized.`)) {
-      // Kategorien löschen
-      setCategories(prev => prev.filter(c => !selectedCategories.includes(c.id)))
-      
-      // Kontakte auf Uncategorized setzen
-      setContacts(prev =>
-        prev.map(c =>
-          selectedCategories.includes(c.categoryId || "")
-            ? { ...c, categoryId: null }
-            : c
-        )
-      )
-      
-      setSelectedCategories([])
-      setIsDeletingMode(false)
+  // Funktion zum Löschen ALLER ausgewählten Kontakte und Kategorien
+  const handleDeleteAllSelected = () => {
+    // Hier können wir nachfragen, ob wirklich ALLES gelöscht werden soll
+    if (confirm("Are you sure you want to delete all selected items?")) {
+      // Diese Funktion könnte erweitert werden, wenn wir eine Auswahl-Liste hätten
+      // Aktuell löschen wir einfach im Lösch-Modus einzeln
+      // Für eine "Delete All" Funktion bräuchten wir eine Auswahl-Logik
     }
   }
 
@@ -507,7 +484,7 @@ export default function DashboardPage() {
             +
           </button>
           
-          {/* ADD MENÜ (wird angezeigt wenn showAddMenu true ist) */}
+          {/* ADD MENÜ */}
           {showAddMenu && (
             <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
               <button
@@ -541,57 +518,18 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* LÖSCH-BUTTON */}
+        {/* MÜLLLEIMER BUTTON (Toggle Lösch-Modus) */}
         <button
-          onClick={() => {
-            if (isDeletingMode) {
-              // Lösch-Modus beenden
-              setIsDeletingMode(false)
-              setSelectedContacts([])
-              setSelectedCategories([])
-            } else {
-              // Lösch-Modus aktivieren
-              setIsDeletingMode(true)
-            }
-          }}
-          className={`w-9 h-9 rounded-full border flex items-center justify-center ${
+          onClick={() => setIsDeletingMode(!isDeletingMode)}
+          className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
             isDeletingMode 
-              ? 'bg-red-100 border-red-300 text-red-600' 
-              : 'text-gray-600 hover:bg-gray-50'
+              ? 'bg-red-500 text-white border-red-500' 
+              : 'text-gray-600 hover:bg-gray-50 border-gray-300'
           }`}
-          title={isDeletingMode ? "Cancel delete mode" : "Delete items"}
+          title={isDeletingMode ? "Exit delete mode" : "Enter delete mode"}
         >
           🗑️
         </button>
-
-        {/* AUSGEWÄHLTE LÖSCHEN BUTTON (nur im Lösch-Modus) */}
-        {isDeletingMode && (
-          <>
-            <button
-              onClick={handleDeleteSelectedContacts}
-              disabled={selectedContacts.length === 0}
-              className={`px-4 py-2 rounded text-sm ${
-                selectedContacts.length > 0
-                  ? 'bg-red-600 text-white hover:bg-red-700'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              Delete Contacts ({selectedContacts.length})
-            </button>
-            
-            <button
-              onClick={handleDeleteSelectedCategories}
-              disabled={selectedCategories.length === 0}
-              className={`px-4 py-2 rounded text-sm ${
-                selectedCategories.length > 0
-                  ? 'bg-red-600 text-white hover:bg-red-700'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              Delete Categories ({selectedCategories.length})
-            </button>
-          </>
-        )}
 
         <button className="rounded bg-black text-white px-4 py-2 text-sm">
           Scan Sent Mails
@@ -601,6 +539,15 @@ export default function DashboardPage() {
       {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-8">
+          {/* LÖSCH-MODUS HINWEIS */}
+          {isDeletingMode && (
+            <div className="bg-red-50 border border-red-200 rounded p-4 text-center">
+              <p className="text-red-700 font-medium">
+                🗑️ Delete Mode Active • Click ✕ to delete items • Click 🗑️ again to exit
+              </p>
+            </div>
+          )}
+
           {/* CATEGORIES */}
           {categories.map(category => (
             <div
@@ -608,7 +555,7 @@ export default function DashboardPage() {
               className="border rounded"
               onDragOver={e => e.preventDefault()}
               onDrop={e => {
-                if (isDeletingMode) return // Kein Drop im Lösch-Modus
+                if (isDeletingMode) return
                 const contactId = e.dataTransfer.getData("contact")
                 if (!contactId) return
 
@@ -621,17 +568,18 @@ export default function DashboardPage() {
                 )
               }}
             >
-              {/* CATEGORY HEADER (EDIT + DELETE + SELECTION) */}
+              {/* CATEGORY HEADER */}
               <div className="px-4 py-2 flex items-center justify-between border-b bg-gray-50">
                 <div className="flex items-center gap-2 flex-1">
-                  {/* SELECTION CHECKBOX (nur im Lösch-Modus) */}
+                  {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
                   {isDeletingMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedCategories.includes(category.id)}
-                      onChange={() => toggleCategorySelection(category.id)}
-                      className="h-4 w-4"
-                    />
+                    <button
+                      onClick={() => handleDeleteCategory(category.id)}
+                      className="text-red-500 hover:text-red-700 mr-2"
+                      title="Delete this category"
+                    >
+                      ✕
+                    </button>
                   )}
                   
                   <input
@@ -648,14 +596,6 @@ export default function DashboardPage() {
                     className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700 flex-1"
                   />
                 </div>
-
-                <button
-                  onClick={() => handleDeleteCategory(category.id)}
-                  className="text-xs text-gray-400 hover:text-red-500 ml-2"
-                  title="Delete category"
-                >
-                  ✕
-                </button>
               </div>
 
               {/* CONTACTS IN CATEGORY */}
@@ -671,9 +611,8 @@ export default function DashboardPage() {
                   setManualDrafts={setManualDrafts}
                   onUpdateMailNote={updateMailNote}
                   onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                  onDeleteMail={isDeletingMode ? deleteMail : undefined}
                   isDeleting={isDeletingMode}
-                  isSelected={selectedContacts.includes(contact.id)}
-                  onToggleSelect={toggleContactSelection}
                 />
               ))}
             </div>
@@ -684,7 +623,7 @@ export default function DashboardPage() {
             className="border rounded"
             onDragOver={e => e.preventDefault()}
             onDrop={e => {
-              if (isDeletingMode) return // Kein Drop im Lösch-Modus
+              if (isDeletingMode) return
               const contactId = e.dataTransfer.getData("contact")
               if (!contactId) return
 
@@ -713,9 +652,8 @@ export default function DashboardPage() {
                 setManualDrafts={setManualDrafts}
                 onUpdateMailNote={updateMailNote}
                 onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                onDeleteMail={isDeletingMode ? deleteMail : undefined}
                 isDeleting={isDeletingMode}
-                isSelected={selectedContacts.includes(contact.id)}
-                onToggleSelect={toggleContactSelection}
               />
             ))}
           </div>
@@ -791,8 +729,9 @@ export default function DashboardPage() {
 
       {/* MANUAL DRAFT SOURCE */}
       <div
-        draggable
+        draggable={!isDeletingMode}
         onDragStart={e => {
+          if (isDeletingMode) return
           const draft: ManualDraft = {
             id: crypto.randomUUID(),
             sentAt: new Date().toISOString()
