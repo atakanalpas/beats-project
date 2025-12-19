@@ -21,7 +21,7 @@ type Contact = {
   id: string
   name: string
   email: string
-  category?: string | null
+  categoryId?: string | null
   position?: number
   sentMails: SentMail[]
 }
@@ -33,6 +33,11 @@ type ManualDraft = {
   contactId?: string
 }
 
+type Category = {
+  id: string
+  name: string
+}
+
 /* ================= MOCK FALLBACK ================= */
 
 const MOCK_CONTACTS: Contact[] = [
@@ -40,6 +45,7 @@ const MOCK_CONTACTS: Contact[] = [
     id: "c1",
     name: "Max Producer",
     email: "max@beats.com",
+    categoryId: "cat-1", // Hinzugefügt
     sentMails: [
       {
         id: "m1",
@@ -55,6 +61,7 @@ const MOCK_CONTACTS: Contact[] = [
     id: "c2",
     name: "Lisa Songwriter",
     email: "lisa@studio.com",
+    categoryId: "cat-2", // Hinzugefügt
     sentMails: []
   }
 ]
@@ -83,40 +90,61 @@ function getStatusColor(lastSentAt?: string, priorityAfterDays = 30) {
   return "bg-green-300"
 }
 
-function getCardOpacity(sentAt: string) {
-  const days =
-    (Date.now() - new Date(sentAt).getTime()) /
-    (1000 * 60 * 60 * 24)
-
-  if (days <= 14) return "opacity-100"
-  if (days <= 60) return "opacity-70"
-  return "opacity-40"
-}
-
 /* ================= COMPONENTS ================= */
 
-function SentMailCard({ mail }: { mail: SentMail }) {
+function SentMailCard({
+  mail,
+  onChangeNote
+}: {
+  mail: SentMail
+  onChangeNote: (note: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <div
-      className={`min-w-[140px] rounded border bg-white px-2 py-1 text-[11px] ${getCardOpacity(
-        mail.sentAt
-      )}`}
-    >
-      <div className="text-[10px] text-gray-400 mb-1">
-        {new Date(mail.sentAt).toLocaleDateString()}
+    <div className="min-w-[160px] rounded border bg-white px-2 py-2 text-[11px]">
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[10px] text-gray-500">
+          {new Date(mail.sentAt).toLocaleDateString()}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className="text-[10px] text-gray-500 hover:text-gray-800"
+          title="Add note"
+        >
+          📝
+        </button>
       </div>
 
-      {mail.note && (
-        <div className="italic text-gray-600">{mail.note}</div>
-      )}
-
-      <ul>
+      <ul className="mt-1">
         {mail.attachments.map(att => (
-          <li key={att.id} className="truncate text-gray-700">
+          <li key={att.id} className="truncate text-gray-800">
             {att.filename}
           </li>
         ))}
       </ul>
+
+      {/* NOTE AREA */}
+      {open && (
+        <div className="mt-2 border-t pt-2">
+          <textarea
+            placeholder="Add note…"
+            value={mail.note ?? ""}
+            onChange={e => onChangeNote(e.target.value)}
+            className="w-full resize-none border rounded px-2 py-1 text-[11px] text-gray-800 focus:outline-none"
+            rows={3}
+          />
+        </div>
+      )}
+
+      {/* show note preview even when closed */}
+      {!open && mail.note && (
+        <div className="mt-2 text-[10px] text-gray-600 italic truncate">
+          {mail.note}
+        </div>
+      )}
     </div>
   )
 }
@@ -124,13 +152,19 @@ function SentMailCard({ mail }: { mail: SentMail }) {
 function ContactRow({
   contact,
   priorityAfterDays,
-  manualDraft,
-  setManualDraft
+  manualDrafts,
+  setManualDrafts,
+  onUpdateMailNote,
 }: {
   contact: Contact
   priorityAfterDays: number
-  manualDraft: ManualDraft | null
-  setManualDraft: React.Dispatch<React.SetStateAction<ManualDraft | null>>
+  manualDrafts: ManualDraft[]
+  setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
+  onUpdateMailNote: (
+    contactId: string,
+    mailId: string,
+    note: string
+  ) => void
 }) {
   const lastSent =
     contact.sentMails.length > 0
@@ -142,25 +176,46 @@ function ContactRow({
       className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50"
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
-        const id = e.dataTransfer.getData("manualDraft")
-        if (!id) return
+        const draftId = e.dataTransfer.getData("manualDraft")
+        if (!draftId) return
 
-        setManualDraft(d =>
-          d ? { ...d, contactId: contact.id } : d
+        setManualDrafts(prev =>
+          prev.map(d =>
+            d.id === draftId
+              ? { ...d, contactId: contact.id }
+              : d
+          )
         )
       }}
     >
       {/* LEFT */}
       <div className="sticky left-0 z-10 bg-white border-r flex">
+        {/* DRAG HANDLE */}
+        <div
+          draggable
+          onDragStart={e =>
+            e.dataTransfer.setData("contact", contact.id)
+          }
+          className="px-2 flex items-center cursor-grab text-gray-400 hover:text-gray-600"
+          title="Drag contact"
+        >
+          ⠿
+        </div>
+
+        {/* STATUS BAR */}
         <div
           className={`w-1 ${getStatusColor(
             lastSent,
             priorityAfterDays
           )}`}
         />
+
+        {/* CONTACT INFO */}
         <div className="px-4 py-2">
-          <div className="font-medium text-sm">{contact.name}</div>
-          <div className="text-[11px] text-gray-400 truncate">
+          <div className="font-medium text-sm text-gray-900">
+            {contact.name}
+          </div>
+          <div className="text-[11px] text-gray-600 truncate">
             {contact.email}
           </div>
         </div>
@@ -170,24 +225,43 @@ function ContactRow({
       <div className="overflow-x-auto">
         <div className="flex gap-2 px-3 py-2 items-center">
           {contact.sentMails.map(mail => (
-            <SentMailCard key={mail.id} mail={mail} />
+            <SentMailCard
+              key={mail.id}
+              mail={mail}
+              onChangeNote={(note) =>
+                onUpdateMailNote(contact.id, mail.id, note)
+              }
+            />
           ))}
 
-          {manualDraft?.contactId === contact.id && (
-            <div className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]">
-              <textarea
-                placeholder="Add note…"
-                value={manualDraft.note ?? ""}
-                onChange={e =>
-                  setManualDraft(d =>
-                    d ? { ...d, note: e.target.value } : d
-                  )
-                }
-                className="w-full resize-none border-none p-0 focus:outline-none"
-                rows={2}
-              />
-            </div>
-          )}
+          {manualDrafts
+            .filter(d => d.contactId === contact.id)
+            .map(draft => (
+              <div
+                key={draft.id}
+                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]"
+              >
+                <div className="text-[10px] text-gray-500 mb-1">
+                  {new Date(draft.sentAt).toLocaleDateString()}
+                </div>
+
+                <textarea
+                  placeholder="Add note…"
+                  value={draft.note ?? ""}
+                  onChange={e =>
+                    setManualDrafts(prev =>
+                      prev.map(d =>
+                        d.id === draft.id
+                          ? { ...d, note: e.target.value }
+                          : d
+                      )
+                    )
+                  }
+                  className="w-full resize-none border-none p-0 focus:outline-none text-gray-700"
+                  rows={2}
+                />
+              </div>
+            ))}
         </div>
       </div>
     </div>
@@ -197,16 +271,75 @@ function ContactRow({
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
+  const [categories, setCategories] = useState<Category[]>([
+    { id: "cat-1", name: "Rapper" },
+    { id: "cat-2", name: "Songwriter" },
+  ])
+
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
-  const [manualDraft, setManualDraft] = useState<ManualDraft | null>(null)
 
-  // Add Contact modal
+  const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
+  const [showAddMenu, setShowAddMenu] = useState(false)
+
+  // ADD CONTACT
   const [showAddContact, setShowAddContact] = useState(false)
-  const [newName, setNewName] = useState("")
-  const [newEmail, setNewEmail] = useState("")
+  const [newContactName, setNewContactName] = useState("")
+  const [newContactEmail, setNewContactEmail] = useState("")
+
+  // ADD CATEGORY
+  const [showAddCategory, setShowAddCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+
+  // Funktion zum Aktualisieren von Mail-Notizen
+  const updateMailNote = (contactId: string, mailId: string, note: string) => {
+    setContacts(prev =>
+      prev.map(contact => {
+        if (contact.id === contactId) {
+          return {
+            ...contact,
+            sentMails: contact.sentMails.map(mail =>
+              mail.id === mailId ? { ...mail, note } : mail
+            )
+          }
+        }
+        return contact
+      })
+    )
+  }
+
+  // Funktion zum Hinzufügen eines Kontakts
+  const handleAddContact = () => {
+    if (!newContactName.trim() || !newContactEmail.trim()) return
+    
+    const newContact: Contact = {
+      id: crypto.randomUUID(),
+      name: newContactName,
+      email: newContactEmail,
+      sentMails: []
+    }
+    
+    setContacts(prev => [...prev, newContact])
+    setNewContactName("")
+    setNewContactEmail("")
+    setShowAddContact(false)
+  }
+
+  // Funktion zum Hinzufügen einer Kategorie
+  const handleAddCategory = () => {
+    if (!newCategoryName.trim()) return
+    
+    const newCategory: Category = {
+      id: crypto.randomUUID(),
+      name: newCategoryName
+    }
+    
+    setCategories(prev => [...prev, newCategory])
+    setNewCategoryName("")
+    setShowAddCategory(false)
+  }
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -242,128 +375,219 @@ export default function DashboardPage() {
           className="border px-3 py-2 rounded text-sm flex-1"
         />
 
-        <select
-          value={priorityAfterDays}
-          onChange={e => setPriorityAfterDays(Number(e.target.value))}
-          className="border rounded px-2 py-2 text-sm"
-        >
-          <option value={14}>14 days</option>
-          <option value={30}>30 days</option>
-          <option value={60}>60 days</option>
-        </select>
-
         <button className="rounded bg-black text-white px-4 py-2 text-sm">
           Scan Sent Mails
-        </button>
-
-        <button
-          onClick={() => setShowAddContact(true)}
-          className="border border-dashed px-4 py-2 rounded text-sm"
-        >
-          + Add contact
-        </button>
-
-        <button
-          onClick={() =>
-            setManualDraft({
-              id: crypto.randomUUID(),
-              sentAt: new Date().toISOString()
-            })
-          }
-          className="border border-dashed px-4 py-2 rounded text-sm"
-        >
-          + Manual send
         </button>
       </header>
 
       {/* CONTENT */}
       <main className="flex-1 overflow-auto">
-        <div className="min-w-[900px] px-4 py-4 space-y-6">
-          {filterContacts(contacts, search).map(contact => (
-            <ContactRow
-              key={contact.id}
-              contact={contact}
-              priorityAfterDays={priorityAfterDays}
-              manualDraft={manualDraft}
-              setManualDraft={setManualDraft}
-            />
+        <div className="min-w-[900px] px-4 py-4 space-y-8">
+          {/* CATEGORIES */}
+          {categories.map(category => (
+            <div
+              key={category.id}
+              className="border rounded"
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                const contactId = e.dataTransfer.getData("contact")
+                if (!contactId) return
+
+                setContacts(prev =>
+                  prev.map(c =>
+                    c.id === contactId
+                      ? { ...c, categoryId: category.id }
+                      : c
+                  )
+                )
+              }}
+            >
+              {/* CATEGORY HEADER */}
+              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-b bg-gray-50">
+                {category.name}
+              </div>
+
+              {/* CONTACTS IN CATEGORY */}
+              {filterContacts(
+                contacts.filter(c => c.categoryId === category.id),
+                search
+              ).map(contact => (
+                <ContactRow
+                  key={contact.id}
+                  contact={contact}
+                  priorityAfterDays={priorityAfterDays}
+                  manualDrafts={manualDrafts}
+                  setManualDrafts={setManualDrafts}
+                  onUpdateMailNote={updateMailNote}
+                />
+              ))}
+            </div>
           ))}
+
+          {/* UNCATEGORIZED */}
+          <div
+            className="border rounded"
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => {
+              const contactId = e.dataTransfer.getData("contact")
+              if (!contactId) return
+
+              setContacts(prev =>
+                prev.map(c =>
+                  c.id === contactId
+                    ? { ...c, categoryId: null }
+                    : c
+                )
+              )
+            }}
+          >
+            <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-b bg-gray-50">
+              Uncategorized
+            </div>
+
+            {filterContacts(
+              contacts.filter(c => !c.categoryId),
+              search
+            ).map(contact => (
+              <ContactRow
+                key={contact.id}
+                contact={contact}
+                priorityAfterDays={priorityAfterDays}
+                manualDrafts={manualDrafts}
+                setManualDrafts={setManualDrafts}
+                onUpdateMailNote={updateMailNote}
+              />
+            ))}
+          </div>
+
+          {/* + ADD BUTTON */}
+          <div className="flex justify-center pt-6">
+            <button
+              onClick={() => setShowAddMenu(v => !v)}
+              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-500 hover:bg-gray-50"
+              title="Add"
+            >
+              +
+            </button>
+          </div>
+
+          {/* ADD MENU */}
+          {showAddMenu && (
+            <div className="flex justify-center pt-2">
+              <div className="border rounded bg-white shadow text-sm overflow-hidden">
+                <button
+                  onClick={() => {
+                    setShowAddContact(true)
+                    setShowAddMenu(false)
+                  }}
+                  className="block w-full px-4 py-2 hover:bg-gray-50 text-left"
+                >
+                  ➕ Add Contact
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowAddCategory(true)
+                    setShowAddMenu(false)
+                  }}
+                  className="block w-full px-4 py-2 hover:bg-gray-50 text-left"
+                >
+                  📁 Add Category
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ADD CONTACT MODAL */}
+          {showAddContact && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-96">
+                <h3 className="font-semibold mb-4">Add New Contact</h3>
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={newContactName}
+                  onChange={e => setNewContactName(e.target.value)}
+                  className="w-full border rounded px-3 py-2 mb-3"
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={newContactEmail}
+                  onChange={e => setNewContactEmail(e.target.value)}
+                  className="w-full border rounded px-3 py-2 mb-4"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowAddContact(false)}
+                    className="px-4 py-2 border rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddContact}
+                    className="px-4 py-2 bg-black text-white rounded"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ADD CATEGORY MODAL */}
+          {showAddCategory && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-96">
+                <h3 className="font-semibold mb-4">Add New Category</h3>
+                <input
+                  type="text"
+                  placeholder="Category name"
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  className="w-full border rounded px-3 py-2 mb-4"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowAddCategory(false)}
+                    className="px-4 py-2 border rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddCategory}
+                    className="px-4 py-2 bg-black text-white rounded"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
-      {/* FLOATING DRAFT */}
-      {manualDraft && !manualDraft.contactId && (
-        <div
-          draggable
-          onDragStart={e =>
-            e.dataTransfer.setData("manualDraft", manualDraft.id)
+      {/* MANUAL DRAFT SOURCE */}
+      <div
+        draggable
+        onDragStart={e => {
+          const draft: ManualDraft = {
+            id: crypto.randomUUID(),
+            sentAt: new Date().toISOString()
           }
-          className="fixed bottom-6 right-6 z-50 w-48 cursor-grab rounded border border-dashed bg-white p-3 text-xs text-gray-500 shadow"
-        >
-          <div className="font-medium mb-1">Manual send</div>
-          <div className="italic">Drag onto the board</div>
-        </div>
-      )}
-
-      {/* ADD CONTACT MODAL */}
-      {showAddContact && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-lg p-6 w-80">
-            <h2 className="text-sm font-semibold mb-4">
-              Add new contact
-            </h2>
-
-            <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              placeholder="Name"
-              className="w-full border px-3 py-2 rounded text-sm mb-2"
-              autoFocus
-            />
-
-            <input
-              value={newEmail}
-              onChange={e => setNewEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full border px-3 py-2 rounded text-sm mb-4"
-            />
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setShowAddContact(false)
-                  setNewName("")
-                  setNewEmail("")
-                }}
-                className="text-sm text-gray-500"
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={() => {
-                  if (!newName || !newEmail) return
-                  setContacts(prev => [
-                    ...prev,
-                    {
-                      id: crypto.randomUUID(),
-                      name: newName,
-                      email: newEmail.toLowerCase().trim(),
-                      sentMails: []
-                    }
-                  ])
-                  setShowAddContact(false)
-                  setNewName("")
-                  setNewEmail("")
-                }}
-                className="bg-black text-white px-4 py-2 rounded text-sm"
-              >
-                Add
-              </button>
-            </div>
+          setManualDrafts(prev => [...prev, draft])
+          e.dataTransfer.setData("manualDraft", draft.id)
+        }}
+        className="fixed bottom-6 right-6 z-50 cursor-grab"
+      >
+        <div className="relative w-36 h-24">
+          <div className="absolute inset-0 rounded border bg-gray-300 translate-x-2 translate-y-2" />
+          <div className="absolute inset-0 rounded border bg-gray-200 translate-x-1 translate-y-1" />
+          <div className="absolute inset-0 rounded border bg-white flex items-center justify-center text-xs font-semibold text-gray-600">
+            DRAG ME
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
