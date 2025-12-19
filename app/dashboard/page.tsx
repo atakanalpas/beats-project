@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 
 /* ================= TYPES ================= */
 
@@ -106,7 +106,7 @@ function SentMailCard({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="min-w-[160px] rounded border bg-white px-2 py-2 text-[11px] relative">
+    <div className="min-w-[160px] rounded border bg-white px-2 py-2 text-[11px] relative group">
       {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
       {isDeleting && onDeleteMail && (
         <button
@@ -197,7 +197,7 @@ function ContactRow({
       className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50"
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
-        if (isDeleting) return // Kein Drop im Lösch-Modus
+        if (isDeleting) return
         const draftId = e.dataTransfer.getData("manualDraft")
         if (!draftId) return
 
@@ -274,20 +274,22 @@ function ContactRow({
             .map(draft => (
               <div
                 key={draft.id}
-                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px] relative"
+                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px] relative group"
               >
-                {/* LÖSCH-KREUZ für Manual Drafts (immer sichtbar) */}
-                <button
-                  onClick={() =>
-                    setManualDrafts(prev =>
-                      prev.filter(d => d.id !== draft.id)
-                    )
-                  }
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
-                  title="Delete manual card"
-                >
-                  ✕
-                </button>
+                {/* LÖSCH-KREUZ für Manual Drafts (NUR im Delete Mode) */}
+                {isDeleting && (
+                  <button
+                    onClick={() =>
+                      setManualDrafts(prev =>
+                        prev.filter(d => d.id !== draft.id)
+                      )
+                    }
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
+                    title="Delete manual card"
+                  >
+                    ✕
+                  </button>
+                )}
 
                 <div className="text-[10px] text-gray-500 mb-1">
                   {new Date(draft.sentAt).toLocaleDateString()}
@@ -316,6 +318,82 @@ function ContactRow({
   )
 }
 
+/* ================= EXPANDING SEARCH BAR ================= */
+
+function ExpandingSearchBar({
+  search,
+  setSearch
+}: {
+  search: string
+  setSearch: (value: string) => void
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleSearchClick = () => {
+    setIsExpanded(true)
+    setTimeout(() => {
+      inputRef.current?.focus()
+    }, 100)
+  }
+
+  const handleBlur = () => {
+    if (!search) {
+      setIsExpanded(false)
+    }
+  }
+
+  return (
+    <div className="relative flex items-center">
+      <div
+        className={`flex items-center transition-all duration-300 ease-in-out ${
+          isExpanded ? "w-64" : "w-10"
+        }`}
+      >
+        {/* SUCH-ICON (immer sichtbar) */}
+        <button
+          onClick={handleSearchClick}
+          className={`absolute left-0 w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
+            isExpanded 
+              ? "bg-gray-100 text-gray-600" 
+              : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+          }`}
+          title="Search"
+        >
+          🔍
+        </button>
+
+        {/* INPUT FIELD (expandiert) */}
+        <input
+          ref={inputRef}
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onBlur={handleBlur}
+          placeholder="Search name or email..."
+          className={`pl-12 pr-4 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300 ${
+            isExpanded ? "opacity-100 w-full" : "opacity-0 w-0"
+          }`}
+        />
+      </div>
+
+      {/* CLEAR BUTTON (nur wenn Text vorhanden) */}
+      {search && isExpanded && (
+        <button
+          onClick={() => {
+            setSearch("")
+            inputRef.current?.focus()
+          }}
+          className="absolute right-3 text-gray-400 hover:text-gray-600"
+          title="Clear search"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  )
+}
+
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
@@ -332,6 +410,7 @@ export default function DashboardPage() {
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [isDeletingMode, setIsDeletingMode] = useState(false)
+  const [selectedItems, setSelectedItems] = useState<string[]>([])
 
   // ADD CONTACT
   const [showAddContact, setShowAddContact] = useState(false)
@@ -361,17 +440,19 @@ export default function DashboardPage() {
 
   // Funktion zum Löschen einer Mail
   const deleteMail = (contactId: string, mailId: string) => {
-    setContacts(prev =>
-      prev.map(contact => {
-        if (contact.id === contactId) {
-          return {
-            ...contact,
-            sentMails: contact.sentMails.filter(mail => mail.id !== mailId)
+    if (confirm("Are you sure you want to delete this mail?")) {
+      setContacts(prev =>
+        prev.map(contact => {
+          if (contact.id === contactId) {
+            return {
+              ...contact,
+              sentMails: contact.sentMails.filter(mail => mail.id !== mailId)
+            }
           }
-        }
-        return contact
-      })
-    )
+          return contact
+        })
+      )
+    }
   }
 
   // Funktion zum Hinzufügen eines Kontakts
@@ -416,10 +497,7 @@ export default function DashboardPage() {
   // Funktion zum Löschen einer Kategorie
   const handleDeleteCategory = (categoryId: string) => {
     if (confirm("Delete this category? Contacts will be moved to Uncategorized.")) {
-      // Kategorie löschen
       setCategories(prev => prev.filter(c => c.id !== categoryId))
-      
-      // Kontakte auf Uncategorized setzen
       setContacts(prev =>
         prev.map(c =>
           c.categoryId === categoryId
@@ -430,14 +508,35 @@ export default function DashboardPage() {
     }
   }
 
-  // Funktion zum Löschen ALLER ausgewählten Kontakte und Kategorien
-  const handleDeleteAllSelected = () => {
-    // Hier können wir nachfragen, ob wirklich ALLES gelöscht werden soll
-    if (confirm("Are you sure you want to delete all selected items?")) {
-      // Diese Funktion könnte erweitert werden, wenn wir eine Auswahl-Liste hätten
-      // Aktuell löschen wir einfach im Lösch-Modus einzeln
-      // Für eine "Delete All" Funktion bräuchten wir eine Auswahl-Logik
+  // Auswahl-Logik für Delete Mode
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItems(prev =>
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    )
+  }
+
+  // Alle ausgewählten Items löschen
+  const handleDeleteSelected = () => {
+    if (selectedItems.length === 0) return
+    
+    const contactIds = selectedItems.filter(id => id.startsWith("contact_"))
+    const categoryIds = selectedItems.filter(id => id.startsWith("category_"))
+    const mailIds = selectedItems.filter(id => id.startsWith("mail_"))
+    
+    if (contactIds.length > 0 && confirm(`Delete ${contactIds.length} selected contacts?`)) {
+      setContacts(prev => prev.filter(c => !contactIds.includes(`contact_${c.id}`)))
     }
+    
+    if (categoryIds.length > 0 && confirm(`Delete ${categoryIds.length} selected categories?`)) {
+      categoryIds.forEach(catId => {
+        const categoryId = catId.replace("category_", "")
+        handleDeleteCategory(categoryId)
+      })
+    }
+    
+    setSelectedItems([])
   }
 
   useEffect(() => {
@@ -467,18 +566,16 @@ export default function DashboardPage() {
       <header className="flex items-center gap-4 px-6 py-4 border-b">
         <div className="font-semibold text-lg">Audio Send Log</div>
 
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search name or email…"
-          className="border px-3 py-2 rounded text-sm flex-1"
-        />
+        {/* EXPANDING SEARCH BAR */}
+        <div className="flex-1 flex justify-center">
+          <ExpandingSearchBar search={search} setSearch={setSearch} />
+        </div>
 
         {/* ADD BUTTON MIT MENÜ */}
         <div className="relative">
           <button
             onClick={() => setShowAddMenu(v => !v)}
-            className="w-9 h-9 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50"
+            className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
             title="Add"
           >
             +
@@ -486,13 +583,13 @@ export default function DashboardPage() {
           
           {/* ADD MENÜ */}
           {showAddMenu && (
-            <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+            <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48 animate-fadeIn">
               <button
                 onClick={() => {
                   setShowAddContact(true)
                   setShowAddMenu(false)
                 }}
-                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2"
+                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
               >
                 <span className="text-lg">👤</span>
                 <div>
@@ -506,7 +603,7 @@ export default function DashboardPage() {
                   setShowAddCategory(true)
                   setShowAddMenu(false)
                 }}
-                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t"
+                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t transition-colors"
               >
                 <span className="text-lg">📁</span>
                 <div>
@@ -520,18 +617,31 @@ export default function DashboardPage() {
 
         {/* MÜLLLEIMER BUTTON (Toggle Lösch-Modus) */}
         <button
-          onClick={() => setIsDeletingMode(!isDeletingMode)}
-          className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
+          onClick={() => {
+            if (isDeletingMode && selectedItems.length > 0) {
+              handleDeleteSelected()
+            }
+            setIsDeletingMode(!isDeletingMode)
+            if (!isDeletingMode) {
+              setSelectedItems([])
+            }
+          }}
+          className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-200 ${
             isDeletingMode 
-              ? 'bg-red-500 text-white border-red-500' 
+              ? 'bg-red-500 text-white border-red-500 shadow-sm' 
               : 'text-gray-600 hover:bg-gray-50 border-gray-300'
           }`}
-          title={isDeletingMode ? "Exit delete mode" : "Enter delete mode"}
+          title={isDeletingMode ? 
+            selectedItems.length > 0 ? 
+              `Delete ${selectedItems.length} selected items` : 
+              "Exit delete mode" 
+            : "Enter delete mode"
+          }
         >
           🗑️
         </button>
 
-        <button className="rounded bg-black text-white px-4 py-2 text-sm">
+        <button className="rounded bg-black text-white px-4 py-2 text-sm hover:bg-gray-800 transition-colors">
           Scan Sent Mails
         </button>
       </header>
@@ -539,15 +649,6 @@ export default function DashboardPage() {
       {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-8">
-          {/* LÖSCH-MODUS HINWEIS */}
-          {isDeletingMode && (
-            <div className="bg-red-50 border border-red-200 rounded p-4 text-center">
-              <p className="text-red-700 font-medium">
-                🗑️ Delete Mode Active • Click ✕ to delete items • Click 🗑️ again to exit
-              </p>
-            </div>
-          )}
-
           {/* CATEGORIES */}
           {categories.map(category => (
             <div
@@ -571,15 +672,14 @@ export default function DashboardPage() {
               {/* CATEGORY HEADER */}
               <div className="px-4 py-2 flex items-center justify-between border-b bg-gray-50">
                 <div className="flex items-center gap-2 flex-1">
-                  {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
+                  {/* AUSWAHL CHECKBOX (nur im Delete Mode) */}
                   {isDeletingMode && (
-                    <button
-                      onClick={() => handleDeleteCategory(category.id)}
-                      className="text-red-500 hover:text-red-700 mr-2"
-                      title="Delete this category"
-                    >
-                      ✕
-                    </button>
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.includes(`category_${category.id}`)}
+                      onChange={() => toggleItemSelection(`category_${category.id}`)}
+                      className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
+                    />
                   )}
                   
                   <input
@@ -596,6 +696,17 @@ export default function DashboardPage() {
                     className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700 flex-1"
                   />
                 </div>
+
+                {/* LÖSCH-KREUZ (nur im Lösch-Modus, ohne Checkbox) */}
+                {isDeletingMode && !selectedItems.includes(`category_${category.id}`) && (
+                  <button
+                    onClick={() => handleDeleteCategory(category.id)}
+                    className="ml-2 text-xs text-red-500 hover:text-red-700"
+                    title="Delete this category"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
               {/* CONTACTS IN CATEGORY */}
@@ -603,17 +714,30 @@ export default function DashboardPage() {
                 contacts.filter(c => c.categoryId === category.id),
                 search
               ).map(contact => (
-                <ContactRow
-                  key={contact.id}
-                  contact={contact}
-                  priorityAfterDays={priorityAfterDays}
-                  manualDrafts={manualDrafts}
-                  setManualDrafts={setManualDrafts}
-                  onUpdateMailNote={updateMailNote}
-                  onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
-                  onDeleteMail={isDeletingMode ? deleteMail : undefined}
-                  isDeleting={isDeletingMode}
-                />
+                <div key={contact.id} className="relative">
+                  {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
+                  {isDeletingMode && (
+                    <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(`contact_${contact.id}`)}
+                        onChange={() => toggleItemSelection(`contact_${contact.id}`)}
+                        className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
+                      />
+                    </div>
+                  )}
+                  
+                  <ContactRow
+                    contact={contact}
+                    priorityAfterDays={priorityAfterDays}
+                    manualDrafts={manualDrafts}
+                    setManualDrafts={setManualDrafts}
+                    onUpdateMailNote={updateMailNote}
+                    onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                    onDeleteMail={isDeletingMode ? deleteMail : undefined}
+                    isDeleting={isDeletingMode}
+                  />
+                </div>
               ))}
             </div>
           ))}
@@ -644,17 +768,30 @@ export default function DashboardPage() {
               contacts.filter(c => !c.categoryId),
               search
             ).map(contact => (
-              <ContactRow
-                key={contact.id}
-                contact={contact}
-                priorityAfterDays={priorityAfterDays}
-                manualDrafts={manualDrafts}
-                setManualDrafts={setManualDrafts}
-                onUpdateMailNote={updateMailNote}
-                onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
-                onDeleteMail={isDeletingMode ? deleteMail : undefined}
-                isDeleting={isDeletingMode}
-              />
+              <div key={contact.id} className="relative">
+                {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
+                {isDeletingMode && (
+                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.includes(`contact_${contact.id}`)}
+                      onChange={() => toggleItemSelection(`contact_${contact.id}`)}
+                      className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
+                    />
+                  </div>
+                )}
+                
+                <ContactRow
+                  contact={contact}
+                  priorityAfterDays={priorityAfterDays}
+                  manualDrafts={manualDrafts}
+                  setManualDrafts={setManualDrafts}
+                  onUpdateMailNote={updateMailNote}
+                  onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                  onDeleteMail={isDeletingMode ? deleteMail : undefined}
+                  isDeleting={isDeletingMode}
+                />
+              </div>
             ))}
           </div>
 
