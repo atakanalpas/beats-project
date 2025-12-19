@@ -295,19 +295,19 @@ function ContactRow({
                       setIsEditingName(false)
                     }
                   }}
-                  className="border-b px-1 py-0.5 text-sm w-full focus:outline-none focus:border-blue-500"
+                  className="px-2 py-1 text-sm w-full border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                   autoFocus
                 />
                 <button
                   onClick={handleNameSave}
-                  className="text-xs text-blue-500 hover:text-blue-700"
+                  className="text-xs text-blue-500 hover:text-blue-700 px-2"
                 >
                   ✓
                 </button>
               </div>
             ) : (
               <div 
-                className="hover:bg-gray-100 px-1 py-0.5 rounded cursor-text"
+                className="hover:bg-gray-100 px-2 py-1 rounded cursor-text"
                 onClick={() => setIsEditingName(true)}
                 title="Click to edit name"
               >
@@ -317,7 +317,7 @@ function ContactRow({
           </div>
           
           {/* EMAIL - bearbeitbar */}
-          <div className="text-[11px] text-gray-600 truncate">
+          <div className="text-[11px] text-gray-600">
             {isEditingEmail ? (
               <div className="flex items-center gap-2">
                 <input
@@ -332,19 +332,19 @@ function ContactRow({
                       setIsEditingEmail(false)
                     }
                   }}
-                  className="border-b px-1 py-0.5 text-xs w-full focus:outline-none focus:border-blue-500"
+                  className="px-2 py-1 text-xs w-full border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                   autoFocus
                 />
                 <button
                   onClick={handleEmailSave}
-                  className="text-xs text-blue-500 hover:text-blue-700"
+                  className="text-xs text-blue-500 hover:text-blue-700 px-2"
                 >
                   ✓
                 </button>
               </div>
             ) : (
               <div 
-                className="hover:bg-gray-100 px-1 py-0.5 rounded cursor-text truncate"
+                className="hover:bg-gray-100 px-2 py-1 rounded cursor-text truncate"
                 onClick={() => setIsEditingEmail(true)}
                 title="Click to edit email"
               >
@@ -513,19 +513,19 @@ function CategorySection({
                     setIsEditingCategory(false)
                   }
                 }}
-                className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700 flex-1 border-b px-1"
+                className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700 flex-1 border rounded px-2 py-1 focus:ring-1 focus:ring-blue-500"
                 autoFocus
               />
               <button
                 onClick={handleCategorySave}
-                className="text-xs text-blue-500 hover:text-blue-700"
+                className="text-xs text-blue-500 hover:text-blue-700 px-2"
               >
                 ✓
               </button>
             </div>
           ) : (
             <div 
-              className="text-xs font-semibold uppercase text-gray-700 flex-1 hover:bg-gray-100 px-1 py-0.5 rounded cursor-text"
+              className="text-xs font-semibold uppercase text-gray-700 flex-1 hover:bg-gray-100 px-2 py-1 rounded cursor-text"
               onClick={() => setIsEditingCategory(true)}
               title="Click to edit category name"
             >
@@ -584,18 +584,23 @@ function ExpandingSearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleSearchClick = () => {
-    setIsExpanded(true)
-    // Kleine Verzögerung für Fokus nach Animation
-    setTimeout(() => {
-      inputRef.current?.focus()
-    }, 10)
+    if (!isExpanded) {
+      setIsExpanded(true)
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 10)
+    }
   }
 
-  const handleBlur = () => {
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Prüfe ob der Fokus auf den Clear Button geht
+    const relatedTarget = e.relatedTarget as HTMLElement
+    if (relatedTarget?.tagName === 'BUTTON' && relatedTarget.title === 'Clear search') {
+      return // Nicht schließen wenn auf Clear Button geklickt wird
+    }
+    
     if (!search) {
-      setTimeout(() => {
-        setIsExpanded(false)
-      }, 200)
+      setIsExpanded(false)
     }
   }
 
@@ -642,10 +647,46 @@ function ExpandingSearchBar({
           }}
           className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
           title="Clear search"
+          tabIndex={-1} // Verhindert Fokus vom Blur Event
         >
           ✕
         </button>
       )}
+    </div>
+  )
+}
+
+/* ================= MANUAL DRAFT SOURCE ================= */
+
+function ManualDraftSource({ 
+  isDeletingMode, 
+  setManualDrafts 
+}: { 
+  isDeletingMode: boolean
+  setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
+}) {
+  if (isDeletingMode) return null // Versteckt im Delete Mode
+
+  return (
+    <div
+      draggable
+      onDragStart={e => {
+        const draft: ManualDraft = {
+          id: generateId(),
+          sentAt: new Date().toISOString()
+        }
+        setManualDrafts(prev => [...prev, draft])
+        e.dataTransfer.setData("manualDraft", draft.id)
+      }}
+      className="fixed bottom-6 right-6 z-50 cursor-grab"
+    >
+      <div className="relative w-36 h-24">
+        <div className="absolute inset-0 rounded border bg-gray-300 translate-x-2 translate-y-2" />
+        <div className="absolute inset-0 rounded border bg-gray-200 translate-x-1 translate-y-1" />
+        <div className="absolute inset-0 rounded border bg-white flex items-center justify-center text-xs font-semibold text-gray-600">
+          DRAG ME
+        </div>
+      </div>
     </div>
   )
 }
@@ -1111,27 +1152,10 @@ export default function DashboardPage() {
       </main>
 
       {/* MANUAL DRAFT SOURCE */}
-      <div
-        draggable={!isDeletingMode}
-        onDragStart={e => {
-          if (isDeletingMode) return
-          const draft: ManualDraft = {
-            id: generateId(),
-            sentAt: new Date().toISOString()
-          }
-          setManualDrafts(prev => [...prev, draft])
-          e.dataTransfer.setData("manualDraft", draft.id)
-        }}
-        className="fixed bottom-6 right-6 z-50 cursor-grab"
-      >
-        <div className="relative w-36 h-24">
-          <div className="absolute inset-0 rounded border bg-gray-300 translate-x-2 translate-y-2" />
-          <div className="absolute inset-0 rounded border bg-gray-200 translate-x-1 translate-y-1" />
-          <div className="absolute inset-0 rounded border bg-white flex items-center justify-center text-xs font-semibold text-gray-600">
-            DRAG ME
-          </div>
-        </div>
-      </div>
+      <ManualDraftSource 
+        isDeletingMode={isDeletingMode}
+        setManualDrafts={setManualDrafts}
+      />
     </div>
   )
 }
