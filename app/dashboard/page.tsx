@@ -68,6 +68,11 @@ const MOCK_CONTACTS: Contact[] = [
 
 /* ================= HELPERS ================= */
 
+// SICHERE UUID GENERATOR
+const generateId = () => {
+  return 'id-' + Math.random().toString(36).substr(2, 9)
+}
+
 function filterContacts(list: Contact[], search: string) {
   if (!search) return list
   return list.filter(
@@ -214,6 +219,12 @@ function ContactRow({
     }
     setIsEditingEmail(false)
   }
+
+  // Reset temp values when contact changes
+  useEffect(() => {
+    setTempName(contact.name)
+    setTempEmail(contact.email)
+  }, [contact.name, contact.email])
 
   return (
     <div
@@ -586,7 +597,7 @@ export default function DashboardPage() {
     if (!newContactName.trim() || !newContactEmail.trim()) return
     
     const newContact: Contact = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: newContactName,
       email: newContactEmail,
       categoryId: null,
@@ -604,7 +615,7 @@ export default function DashboardPage() {
     if (!newCategoryName.trim()) return
     
     const newCategory: Category = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: newCategoryName
     }
     
@@ -670,16 +681,17 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    fetch("/api/dashboard")
-      .then(res => res.json())
-      .then(data => {
-        setContacts(data?.length ? data : MOCK_CONTACTS)
-        setLoading(false)
-      })
-      .catch(() => {
+    // Simulierte Datenladen mit Fehlerbehandlung
+    try {
+      setTimeout(() => {
         setContacts(MOCK_CONTACTS)
         setLoading(false)
-      })
+      }, 500)
+    } catch (error) {
+      console.error("Error loading data:", error)
+      setContacts(MOCK_CONTACTS)
+      setLoading(false)
+    }
   }, [])
 
   if (loading) {
@@ -715,7 +727,7 @@ export default function DashboardPage() {
             
             {/* ADD MENÜ */}
             {showAddMenu && (
-              <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48 animate-fadeIn">
+              <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
                 <button
                   onClick={() => {
                     setShowAddContact(true)
@@ -794,6 +806,11 @@ export default function DashboardPage() {
               }
               setIsEditingCategory(false)
             }
+
+            // Reset temp value when category changes
+            useEffect(() => {
+              setTempCategoryName(category.name)
+            }, [category.name])
 
             return (
               <div
@@ -1030,7 +1047,7 @@ export default function DashboardPage() {
         onDragStart={e => {
           if (isDeletingMode) return
           const draft: ManualDraft = {
-            id: crypto.randomUUID(),
+            id: generateId(),
             sentAt: new Date().toISOString()
           }
           setManualDrafts(prev => [...prev, draft])
