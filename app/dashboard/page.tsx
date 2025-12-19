@@ -241,9 +241,23 @@ function ContactRow({
                 key={draft.id}
                 className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px]"
               >
-                <div className="text-[10px] text-gray-500 mb-1">
-                  {new Date(draft.sentAt).toLocaleDateString()}
-                </div>
+                <div className="flex justify-between items-center mb-1">
+  <div className="text-[10px] text-gray-500">
+    {new Date(draft.sentAt).toLocaleDateString()}
+  </div>
+
+  <button
+    onClick={() =>
+      setManualDrafts(prev =>
+        prev.filter(d => d.id !== draft.id)
+      )
+    }
+    className="text-[10px] text-gray-400 hover:text-red-500"
+    title="Delete manual card"
+  >
+    ✕
+  </button>
+</div>
 
                 <textarea
                   placeholder="Add note…"
@@ -271,10 +285,7 @@ function ContactRow({
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
-  const [categories, setCategories] = useState<Category[]>([
-    { id: "cat-1", name: "Rapper" },
-    { id: "cat-2", name: "Songwriter" },
-  ])
+  const [categories, setCategories] = useState<Category[]>([])
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
@@ -318,6 +329,7 @@ export default function DashboardPage() {
       id: crypto.randomUUID(),
       name: newContactName,
       email: newContactEmail,
+      categoryId: null,
       sentMails: []
     }
     
@@ -374,7 +386,13 @@ export default function DashboardPage() {
           placeholder="Search name or email…"
           className="border px-3 py-2 rounded text-sm flex-1"
         />
-
+        <button
+          onClick={() => setShowAddMenu(v => !v)}
+          className="w-9 h-9 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50"
+          title="Add"
+        >
+          +
+        </button>
         <button className="rounded bg-black text-white px-4 py-2 text-sm">
           Scan Sent Mails
         </button>
@@ -402,10 +420,43 @@ export default function DashboardPage() {
                 )
               }}
             >
-              {/* CATEGORY HEADER */}
-              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-b bg-gray-50">
-                {category.name}
-              </div>
+              {/* CATEGORY HEADER (EDIT + DELETE) */}
+<div className="px-4 py-2 flex items-center justify-between border-b bg-gray-50">
+  <input
+    value={category.name}
+    onChange={e =>
+      setCategories(prev =>
+        prev.map(c =>
+          c.id === category.id
+            ? { ...c, name: e.target.value }
+            : c
+        )
+      )
+    }
+    className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700"
+  />
+
+  <button
+    onClick={() => {
+      // Kategorie löschen
+      setCategories(prev =>
+        prev.filter(c => c.id !== category.id)
+      )
+      // Kontakte zurück auf Uncategorized setzen
+      setContacts(prev =>
+        prev.map(c =>
+          c.categoryId === category.id
+            ? { ...c, categoryId: null }
+            : c
+        )
+      )
+    }}
+    className="text-xs text-gray-400 hover:text-red-500"
+    title="Delete category"
+  >
+    ✕
+  </button>
+</div>
 
               {/* CONTACTS IN CATEGORY */}
               {filterContacts(
@@ -459,44 +510,6 @@ export default function DashboardPage() {
               />
             ))}
           </div>
-
-          {/* + ADD BUTTON */}
-          <div className="flex justify-center pt-6">
-            <button
-              onClick={() => setShowAddMenu(v => !v)}
-              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-500 hover:bg-gray-50"
-              title="Add"
-            >
-              +
-            </button>
-          </div>
-
-          {/* ADD MENU */}
-          {showAddMenu && (
-            <div className="flex justify-center pt-2">
-              <div className="border rounded bg-white shadow text-sm overflow-hidden">
-                <button
-                  onClick={() => {
-                    setShowAddContact(true)
-                    setShowAddMenu(false)
-                  }}
-                  className="block w-full px-4 py-2 hover:bg-gray-50 text-left"
-                >
-                  ➕ Add Contact
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowAddCategory(true)
-                    setShowAddMenu(false)
-                  }}
-                  className="block w-full px-4 py-2 hover:bg-gray-50 text-left"
-                >
-                  📁 Add Category
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* ADD CONTACT MODAL */}
           {showAddContact && (
