@@ -974,7 +974,7 @@ export default function DashboardPage() {
                 setShowImportExportMenu(v => !v)
                 setShowAddMenu(false)
               }}
-              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
               title="Import/Export"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1044,7 +1044,7 @@ export default function DashboardPage() {
                 setShowAddMenu(v => !v)
                 setShowImportExportMenu(false)
               }}
-              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
               title="Add"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1099,11 +1099,11 @@ export default function DashboardPage() {
                 }
               }
             }}
-            className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-200 ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
               isDeletingMode 
-                ? 'bg-red-500 text-white border-red-500 shadow-sm' 
-                : 'text-gray-600 hover:bg-gray-50 border-gray-300'
-            }`}
+                ? 'bg-red-500 text-white shadow-sm' 
+                : 'text-gray-600 hover:bg-gray-50'
+  }`}
             title={isDeletingMode ? 
               selectedItems.length > 0 ? 
                 `Delete ${selectedItems.length} selected items` : 
