@@ -1116,7 +1116,7 @@ export default function DashboardPage() {
   </svg>
           </button>
 
-          <button className="rounded bg-black text-white px-4 py-2 text-sm hover:bg-gray-800 transition-colors">
+          <button className="rounded text-white px-4 py-2 text-sm hover:bg-gray-800 transition-colors">
             Scan Sent Mails
           </button>
         </div>
