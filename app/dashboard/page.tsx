@@ -577,10 +577,12 @@ function CategorySection({
 
 function ExpandingSearchBar({
   search,
-  setSearch
+  setSearch,
+  onFocus
 }: {
   search: string
   setSearch: (value: string) => void
+  onFocus?: () => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -613,7 +615,7 @@ function ExpandingSearchBar({
           isExpanded ? "w-64" : "w-10"
         }`}
       >
-        {/* SUCH-ICON (immer sichtbar) */}
+        {/* SUCH-ICON MIT SVG */}
         <button
           onClick={handleSearchClick}
           className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors flex-shrink-0 ${
@@ -623,10 +625,19 @@ function ExpandingSearchBar({
           }`}
           title="Search"
         >
-          {/* EMOJI DURCH DIESES SVG ERSETZEN */}
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-  </svg>
+          <svg 
+            className="w-5 h-5" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
+            />
+          </svg>
         </button>
 
         {/* INPUT FIELD (expandiert) */}
@@ -636,6 +647,7 @@ function ExpandingSearchBar({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onBlur={handleBlur}
+          onFocus={onFocus}
           placeholder="Search name or email..."
           className={`px-3 py-2 bg-transparent focus:outline-none transition-all duration-300 ${
             isExpanded ? "opacity-100 w-full" : "opacity-0 w-0"
@@ -712,6 +724,7 @@ export default function DashboardPage() {
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [showImportExportMenu, setShowImportExportMenu] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const [isDeletingMode, setIsDeletingMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState<string[]>([])
 
@@ -723,6 +736,17 @@ export default function DashboardPage() {
   // ADD CATEGORY
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
+
+  // Funktionen zum Schließen anderer Menüs
+  const closeAllMenus = () => {
+    setShowAddMenu(false)
+    setShowImportExportMenu(false)
+    setShowUserMenu(false)
+  }
+
+  const handleSearchFocus = () => {
+    closeAllMenus()
+  }
 
   // Funktion zum Aktualisieren von Mail-Notizen
   const updateMailNote = (contactId: string, mailId: string, note: string) => {
@@ -908,6 +932,22 @@ export default function DashboardPage() {
     }
   }
 
+  // USER MENU FUNKTIONEN
+  const handleSettings = () => {
+    alert("Settings would open here")
+    setShowUserMenu(false)
+  }
+
+  const handleChangeAccount = () => {
+    alert("Change account would open here")
+    setShowUserMenu(false)
+  }
+
+  const handleLogout = () => {
+    alert("Logout would happen here")
+    setShowUserMenu(false)
+  }
+
   // IMPORT/EXPORT FUNKTIONEN
   const handleExportToExcel = () => {
     alert("Export to Excel would be implemented here")
@@ -965,7 +1005,11 @@ export default function DashboardPage() {
         {/* BUTTONS GRUPPE */}
         <div className="flex items-center gap-3">
           {/* SUCHLEISTE (neben + Button) */}
-          <ExpandingSearchBar search={search} setSearch={setSearch} />
+          <ExpandingSearchBar 
+            search={search} 
+            setSearch={setSearch}
+            onFocus={handleSearchFocus}
+          />
 
           {/* IMPORT/EXPORT BUTTON */}
           <div className="relative">
@@ -973,13 +1017,14 @@ export default function DashboardPage() {
               onClick={() => {
                 setShowImportExportMenu(v => !v)
                 setShowAddMenu(false)
+                setShowUserMenu(false)
               }}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
               title="Import/Export"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-  </svg>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
             </button>
             
             {/* IMPORT/EXPORT MENÜ */}
@@ -1043,13 +1088,14 @@ export default function DashboardPage() {
               onClick={() => {
                 setShowAddMenu(v => !v)
                 setShowImportExportMenu(false)
+                setShowUserMenu(false)
               }}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
               title="Add"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
             </button>
             
             {/* ADD MENÜ */}
@@ -1091,7 +1137,6 @@ export default function DashboardPage() {
             onClick={() => {
               if (isDeletingMode && selectedItems.length > 0) {
                 handleDeleteSelected()
-                // Lösch-Modus bleibt aktiv nach Löschung
               } else {
                 setIsDeletingMode(!isDeletingMode)
                 if (!isDeletingMode) {
@@ -1099,11 +1144,11 @@ export default function DashboardPage() {
                 }
               }
             }}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
+            className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-200 ${
               isDeletingMode 
-                ? 'bg-red-500 text-white shadow-sm' 
-                : 'text-gray-600 hover:bg-gray-50'
-  }`}
+                ? 'bg-red-500 text-white border-red-500 shadow-sm' 
+                : 'text-gray-600 hover:bg-gray-50 border-gray-300'
+            }`}
             title={isDeletingMode ? 
               selectedItems.length > 0 ? 
                 `Delete ${selectedItems.length} selected items` : 
@@ -1112,11 +1157,73 @@ export default function DashboardPage() {
             }
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
           </button>
 
-          <button className="rounded text-white bg-black px-4 py-2 text-sm hover:bg-gray-800 transition-colors">
+          {/* USER MENU BUTTON */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowUserMenu(v => !v)
+                setShowAddMenu(false)
+                setShowImportExportMenu(false)
+              }}
+              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
+              title="User menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </button>
+            
+            {/* USER MENÜ */}
+            {showUserMenu && (
+              <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+                <button
+                  onClick={handleSettings}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <div>
+                    <div className="font-medium">Settings</div>
+                    <div className="text-xs text-gray-500">App settings and preferences</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={handleChangeAccount}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <div>
+                    <div className="font-medium">Change Account</div>
+                    <div className="text-xs text-gray-500">Switch to different account</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={handleLogout}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t text-red-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <div>
+                    <div className="font-medium">Log Out</div>
+                    <div className="text-xs text-gray-500">Sign out of your account</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button className="rounded bg-black text-white px-4 py-2 text-sm hover:bg-gray-800 transition-colors">
             Scan Sent Mails
           </button>
         </div>
