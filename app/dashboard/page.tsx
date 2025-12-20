@@ -720,6 +720,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
+  const [scanning, setScanning] = useState(false)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
   const [showAddMenu, setShowAddMenu] = useState(false)
@@ -746,6 +747,26 @@ export default function DashboardPage() {
 
   const handleSearchFocus = () => {
     closeAllMenus()
+  }
+
+  // SCAN FUNCTION
+  const handleScanMails = async () => {
+    setScanning(true)
+    closeAllMenus()
+    
+    try {
+      // Simuliere das Scannen (2 Sekunden)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // Hier würde der echte Scan-Code stehen
+      // Z.B.: const result = await scanEmailAttachments()
+      
+      alert("Scanning complete! Found 3 new emails.")
+    } catch (error) {
+      alert("Scanning failed: " + error)
+    } finally {
+      setScanning(false)
+    }
   }
 
   // Funktion zum Aktualisieren von Mail-Notizen
@@ -1015,12 +1036,16 @@ export default function DashboardPage() {
           <div className="relative">
             <button
               onClick={() => {
+                if (isDeletingMode) return
                 setShowImportExportMenu(v => !v)
                 setShowAddMenu(false)
                 setShowUserMenu(false)
               }}
-              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
-              title="Import/Export"
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors ${
+                isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title={isDeletingMode ? "Cannot open menu in delete mode" : "Import/Export"}
+              disabled={isDeletingMode}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1028,7 +1053,7 @@ export default function DashboardPage() {
             </button>
             
             {/* IMPORT/EXPORT MENÜ */}
-            {showImportExportMenu && (
+            {showImportExportMenu && !isDeletingMode && (
               <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
                 <button
                   onClick={handleImportList}
@@ -1086,12 +1111,16 @@ export default function DashboardPage() {
           <div className="relative">
             <button
               onClick={() => {
+                if (isDeletingMode) return
                 setShowAddMenu(v => !v)
                 setShowImportExportMenu(false)
                 setShowUserMenu(false)
               }}
-              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
-              title="Add"
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors ${
+                isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title={isDeletingMode ? "Cannot add in delete mode" : "Add"}
+              disabled={isDeletingMode}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1099,7 +1128,7 @@ export default function DashboardPage() {
             </button>
             
             {/* ADD MENÜ */}
-            {showAddMenu && (
+            {showAddMenu && !isDeletingMode && (
               <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
                 <button
                   onClick={() => {
@@ -1143,11 +1172,13 @@ export default function DashboardPage() {
                   setSelectedItems([])
                 }
               }
+              // Schließe alle anderen Menüs
+              closeAllMenus()
             }}
-            className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-200 ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
               isDeletingMode 
-                ? 'bg-red-500 text-white border-red-500 shadow-sm' 
-                : 'text-gray-600 hover:bg-gray-50 border-gray-300'
+                ? 'bg-red-500 text-white shadow-sm' 
+                : 'text-gray-600 hover:bg-gray-50'
             }`}
             title={isDeletingMode ? 
               selectedItems.length > 0 ? 
@@ -1165,12 +1196,16 @@ export default function DashboardPage() {
           <div className="relative">
             <button
               onClick={() => {
+                if (isDeletingMode) return
                 setShowUserMenu(v => !v)
                 setShowAddMenu(false)
                 setShowImportExportMenu(false)
               }}
-              className="w-10 h-10 rounded-full border flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors"
-              title="User menu"
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors ${
+                isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title={isDeletingMode ? "Cannot open menu in delete mode" : "User menu"}
+              disabled={isDeletingMode}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -1178,7 +1213,7 @@ export default function DashboardPage() {
             </button>
             
             {/* USER MENÜ */}
-            {showUserMenu && (
+            {showUserMenu && !isDeletingMode && (
               <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
                 <button
                   onClick={handleSettings}
@@ -1223,8 +1258,32 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <button className="rounded bg-black text-white px-4 py-2 text-sm hover:bg-gray-800 transition-colors">
-            Scan Sent Mails
+          {/* SCAN SENT MAILS BUTTON - MIT LOADING ANIMATION */}
+          <button
+            onClick={handleScanMails}
+            disabled={scanning}
+            className="relative rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2.5 text-sm font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed group"
+          >
+            {scanning ? (
+              <>
+                {/* LOADING SPINNER */}
+                <div className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Scanning...</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="relative z-10">Scan Sent Mails</span>
+                {/* HOVER EFFECT */}
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                {/* PULSING EFFECT */}
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg blur opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              </>
+            )}
           </button>
         </div>
       </header>
