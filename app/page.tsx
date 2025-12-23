@@ -118,7 +118,7 @@ export default function Home() {
           
           {/* ODER Google Button (für später) */}
           <button
-            onClick={() => signIn("google")}
+            onClick={() => signIn("google", { callbackUrl: "/" })}
             className="mt-4 inline-flex items-center justify-center gap-3 px-6 py-3 text-base font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
