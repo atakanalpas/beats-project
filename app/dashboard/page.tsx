@@ -121,6 +121,16 @@ function formatDate(dateIso: string) {
   return new Date(dateIso).toLocaleDateString()
 }
 
+function getLastSentAt(contact: Contact) {
+  let latest: string | undefined
+  for (const mail of contact.sentMails) {
+    if (!latest || new Date(mail.sentAt) > new Date(latest)) {
+      latest = mail.sentAt
+    }
+  }
+  return latest
+}
+
 function sanitizeEmail(email: string) {
   return email.trim()
 }
@@ -1244,6 +1254,28 @@ export default function DashboardPage() {
   }
 
   const hasUncategorizedContacts = contacts.filter(c => !c.categoryId).length > 0
+  const overview = useMemo(() => {
+    let needsFollowUp = 0
+    let lastActivity: string | undefined
+
+    for (const contact of contacts) {
+      const lastSent = getLastSentAt(contact)
+      if (!lastSent || (daysSince(lastSent) ?? 0) >= priorityAfterDays) {
+        needsFollowUp += 1
+      }
+
+      if (lastSent && (!lastActivity || new Date(lastSent) > new Date(lastActivity))) {
+        lastActivity = lastSent
+      }
+    }
+
+    return {
+      totalContacts: contacts.length,
+      totalCategories: categories.length,
+      needsFollowUp,
+      lastActivity
+    }
+  }, [categories.length, contacts, priorityAfterDays])
 
   return (
     <div
@@ -1547,6 +1579,40 @@ export default function DashboardPage() {
       {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-8">
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 px-4 py-3">
+              <div>
+                <div className="text-sm uppercase tracking-[0.2em] text-zinc-500">Overview</div>
+                <h2 className="text-xl font-semibold">Track your follow-ups at a glance</h2>
+                <p className="text-sm text-zinc-500">Stay on top of your outreach and keep every artist looped in.</p>
+              </div>
+              <div className="flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-3 py-1 text-xs text-zinc-500">
+                <span className="h-2 w-2 rounded-full bg-amber-300" />
+                Priority threshold: {priorityAfterDays} days
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-sm">
+                <div className="text-xs uppercase text-zinc-500">Contacts</div>
+                <div className="mt-2 text-2xl font-semibold">{overview.totalContacts}</div>
+                <div className="text-sm text-zinc-500">Across {overview.totalCategories} categories</div>
+              </div>
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-sm">
+                <div className="text-xs uppercase text-zinc-500">Needs follow-up</div>
+                <div className="mt-2 text-2xl font-semibold">{overview.needsFollowUp}</div>
+                <div className="text-sm text-zinc-500">Based on your priority window</div>
+              </div>
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-sm">
+                <div className="text-xs uppercase text-zinc-500">Last activity</div>
+                <div className="mt-2 text-2xl font-semibold">
+                  {overview.lastActivity ? formatDate(overview.lastActivity) : "No sends yet"}
+                </div>
+                <div className="text-sm text-zinc-500">Most recent email sent</div>
+              </div>
+            </div>
+          </section>
+
           {/* CATEGORIES */}
           {categories.map(category => (
             <CategorySection
