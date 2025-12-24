@@ -68,7 +68,6 @@ const MOCK_CONTACTS: Contact[] = [
 
 /* ================= HELPERS ================= */
 
-// SICHERE UUID GENERATOR
 const generateId = () => {
   return 'id-' + Math.random().toString(36).substr(2, 9)
 }
@@ -95,6 +94,69 @@ function getStatusColor(lastSentAt?: string, priorityAfterDays = 30) {
   return "bg-green-300"
 }
 
+function getContactStatus(lastSentAt?: string, priorityAfterDays = 30) {
+  if (!lastSentAt) return "bg-gray-100"
+  
+  const days = (Date.now() - new Date(lastSentAt).getTime()) / (1000 * 60 * 60 * 24)
+  
+  if (days >= priorityAfterDays) return "bg-red-50 border-l-4 border-red-500"
+  if (days >= priorityAfterDays * 0.6) return "bg-orange-50 border-l-4 border-orange-400"
+  if (days >= priorityAfterDays * 0.3) return "bg-yellow-50 border-l-4 border-yellow-400"
+  return "bg-green-50 border-l-4 border-green-400"
+}
+
+/* ================= DRAGGABLE MANUAL CARD ================= */
+
+function DraggableManualCard({ 
+  isDragging, 
+  setManualDrafts,
+  onDragStart
+}: { 
+  isDragging: boolean
+  setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
+  onDragStart: (draft: ManualDraft) => void
+}) {
+  if (isDragging) return null
+
+  const handleDragStart = (e: React.DragEvent) => {
+    const draft: ManualDraft = {
+      id: generateId(),
+      sentAt: new Date().toISOString()
+    }
+    onDragStart(draft)
+    e.dataTransfer.setData("manualDraft", draft.id)
+    
+    // Füge visuelles Feedback hinzu
+    const dragImage = e.currentTarget.cloneNode(true) as HTMLElement
+    dragImage.style.opacity = "0.7"
+    dragImage.style.transform = "rotate(5deg)"
+    document.body.appendChild(dragImage)
+    e.dataTransfer.setDragImage(dragImage, 50, 12)
+    
+    setTimeout(() => document.body.removeChild(dragImage), 0)
+  }
+
+  return (
+    <div className="fixed bottom-8 right-8 z-40">
+      <div className="relative">
+        {/* Untere Karten als Schatten */}
+        <div className="absolute inset-0 rounded border bg-gray-300 translate-x-1 translate-y-1" />
+        <div className="absolute inset-0 rounded border bg-gray-200 translate-x-0.5 translate-y-0.5" />
+        
+        {/* Obere draggable Karte */}
+        <div
+          draggable
+          onDragStart={handleDragStart}
+          className="relative w-28 h-20 rounded border bg-white flex items-center justify-center text-xs font-semibold text-gray-600 cursor-grab active:cursor-grabbing hover:shadow-lg transition-all duration-200 hover:-translate-y-1 active:scale-95"
+          style={{ transform: 'translate(0, 0) rotate(0deg)' }}
+        >
+          DRAG ME
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ================= COMPONENTS ================= */
 
 function SentMailCard({
@@ -109,14 +171,25 @@ function SentMailCard({
   onDeleteMail?: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [isAnimating, setIsAnimating] = useState(false)
+
+  const handleDelete = () => {
+    setIsAnimating(true)
+    setTimeout(() => {
+      onDeleteMail?.()
+      setIsAnimating(false)
+    }, 300)
+  }
 
   return (
-    <div className="min-w-[160px] rounded border bg-white px-2 py-2 text-[11px] relative group">
-      {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
+    <div className={`min-w-[160px] rounded border bg-white px-2 py-2 text-[11px] relative group transition-all duration-300 ${
+      isAnimating ? 'scale-95 opacity-0' : 'scale-100 opacity-100'
+    }`}>
+      {/* LÖSCH-KREUZ */}
       {isDeleting && onDeleteMail && (
         <button
-          onClick={onDeleteMail}
-          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
+          onClick={handleDelete}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600 transition-transform hover:scale-110"
           title="Delete this mail"
         >
           ✕
@@ -128,11 +201,11 @@ function SentMailCard({
           {new Date(mail.sentAt).toLocaleDateString()}
         </div>
 
-        {/* NOTIZ BUTTON oben rechts */}
+        {/* NOTIZ BUTTON */}
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
-          className="text-[10px] text-gray-500 hover:text-gray-800"
+          className="text-gray-500 hover:text-gray-800 transition-colors"
           title="Add note"
         >
           <svg 
@@ -140,7 +213,6 @@ function SentMailCard({
             fill="none" 
             stroke="currentColor" 
             viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
           >
             <path 
               strokeLinecap="round" 
@@ -160,20 +232,43 @@ function SentMailCard({
         ))}
       </ul>
 
-      {/* NOTE AREA */}
+      {/* NOTE AREA - jetzt als Modal/Popup */}
       {open && (
-        <div className="mt-2 border-t pt-2">
-          <textarea
-            placeholder="Add note…"
-            value={mail.note ?? ""}
-            onChange={e => onChangeNote(e.target.value)}
-            className="w-full resize-none border rounded px-2 py-1 text-[11px] text-gray-800 focus:outline-none"
-            rows={3}
-          />
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-4 w-96 max-w-[90vw] relative">
+            <button
+              onClick={() => setOpen(false)}
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-800"
+            >
+              ✕
+            </button>
+            <h3 className="font-medium mb-3">Add Note</h3>
+            <textarea
+              placeholder="Enter your note here..."
+              value={mail.note ?? ""}
+              onChange={e => onChangeNote(e.target.value)}
+              className="w-full h-40 resize-none border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setOpen(false)}
+                className="px-4 py-2 border rounded text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                className="px-4 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+              >
+                Save Note
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* show note preview even when closed */}
+      {/* Note preview */}
       {!open && mail.note && (
         <div className="mt-2 text-[10px] text-gray-600 italic truncate">
           {mail.note}
@@ -193,7 +288,8 @@ function ContactRow({
   onDeleteMail,
   onUpdateContactName,
   onUpdateContactEmail,
-  isDeleting
+  isDeleting,
+  onDropAnimation
 }: {
   contact: Contact
   priorityAfterDays: number
@@ -209,16 +305,14 @@ function ContactRow({
   onUpdateContactName?: (contactId: string, name: string) => void
   onUpdateContactEmail?: (contactId: string, email: string) => void
   isDeleting?: boolean
+  onDropAnimation?: () => void
 }) {
-  const lastSent =
-    contact.sentMails.length > 0
-      ? contact.sentMails[0].sentAt
-      : undefined
-
+  const lastSent = contact.sentMails.length > 0 ? contact.sentMails[0].sentAt : undefined
   const [isEditingName, setIsEditingName] = useState(false)
   const [isEditingEmail, setIsEditingEmail] = useState(false)
   const [tempName, setTempName] = useState(contact.name)
   const [tempEmail, setTempEmail] = useState(contact.email)
+  const [isDropTarget, setIsDropTarget] = useState(false)
 
   const handleNameSave = () => {
     if (onUpdateContactName && tempName.trim() && tempName !== contact.name) {
@@ -234,66 +328,70 @@ function ContactRow({
     setIsEditingEmail(false)
   }
 
-  // Reset temp values when contact changes
   useEffect(() => {
     setTempName(contact.name)
     setTempEmail(contact.email)
   }, [contact.name, contact.email])
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDropTarget(false)
+    
+    const draftId = e.dataTransfer.getData("manualDraft")
+    if (!draftId) return
+
+    setManualDrafts(prev =>
+      prev.map(d =>
+        d.id === draftId
+          ? { ...d, contactId: contact.id }
+          : d
+      )
+    )
+    
+    // Trigger animation
+    onDropAnimation?.()
+  }
+
   return (
     <div
-      className="grid grid-cols-[260px_1fr] border-b hover:bg-gray-50"
-      onDragOver={e => e.preventDefault()}
-      onDrop={e => {
-        if (isDeleting) return
-        const draftId = e.dataTransfer.getData("manualDraft")
-        if (!draftId) return
-
-        setManualDrafts(prev =>
-          prev.map(d =>
-            d.id === draftId
-              ? { ...d, contactId: contact.id }
-              : d
-          )
-        )
+      className={`grid grid-cols-[260px_1fr] hover:bg-gray-50 transition-all duration-200 ${
+        getContactStatus(lastSent, priorityAfterDays)
+      } ${isDropTarget ? 'bg-blue-50 border-blue-200' : ''}`}
+      onDragOver={e => {
+        e.preventDefault()
+        if (!isDeleting) setIsDropTarget(true)
       }}
+      onDragLeave={() => setIsDropTarget(false)}
+      onDrop={handleDrop}
     >
       {/* LEFT */}
-      <div className="sticky left-0 z-10 bg-white border-r flex">
-        {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
+      <div className="sticky left-0 z-10 border-r flex">
         {isDeleting && onDeleteContact && (
           <button
             onClick={() => onDeleteContact(contact.id)}
-            className="px-3 flex items-center text-red-500 hover:text-red-700"
+            className="px-3 flex items-center text-red-500 hover:text-red-700 transition-colors"
             title="Delete this contact"
           >
             ✕
           </button>
         )}
 
-        {/* DRAG HANDLE */}
         <div
           draggable={!isDeleting}
           onDragStart={e =>
             e.dataTransfer.setData("contact", contact.id)
           }
-          className="px-2 flex items-center cursor-grab text-gray-400 hover:text-gray-600"
+          className="px-2 flex items-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
           title="Drag contact"
         >
           ⠿
         </div>
 
-        {/* STATUS BAR */}
         <div
-          className={`w-1 ${getStatusColor(
-            lastSent,
-            priorityAfterDays
-          )}`}
+          className={`w-1 ${getStatusColor(lastSent, priorityAfterDays)}`}
         />
 
-        {/* CONTACT INFO */}
         <div className="px-4 py-2 flex-1">
-          {/* NAME - bearbeitbar */}
           <div className="font-medium text-sm text-gray-900">
             {isEditingName ? (
               <div className="flex items-center gap-2">
@@ -330,7 +428,6 @@ function ContactRow({
             )}
           </div>
           
-          {/* EMAIL - bearbeitbar */}
           <div className="text-[11px] text-gray-600">
             {isEditingEmail ? (
               <div className="flex items-center gap-2">
@@ -371,7 +468,7 @@ function ContactRow({
 
       {/* RIGHT */}
       <div className="overflow-x-auto">
-        <div className="flex gap-2 px-3 py-2 items-center">
+        <div className="flex gap-2 px-3 py-2 items-center min-h-[60px]">
           {contact.sentMails.map(mail => (
             <SentMailCard
               key={mail.id}
@@ -389,9 +486,8 @@ function ContactRow({
             .map(draft => (
               <div
                 key={draft.id}
-                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px] relative group"
+                className="min-w-[140px] rounded border border-dashed bg-white px-2 py-1 text-[11px] relative group transition-all duration-300"
               >
-                {/* LÖSCH-KREUZ für Manual Drafts (NUR im Delete Mode) */}
                 {isDeleting && (
                   <button
                     onClick={() =>
@@ -399,7 +495,7 @@ function ContactRow({
                         prev.filter(d => d.id !== draft.id)
                       )
                     }
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600 transition-transform hover:scale-110"
                     title="Delete manual card"
                   >
                     ✕
@@ -410,9 +506,8 @@ function ContactRow({
                   {new Date(draft.sentAt).toLocaleDateString()}
                 </div>
 
-                {/* ÄNDERUNG: "Add note..." zu "Add..." */}
                 <textarea
-                  placeholder="Add..."
+                  placeholder="Add note..."
                   value={draft.note ?? ""}
                   onChange={e =>
                     setManualDrafts(prev =>
@@ -423,7 +518,7 @@ function ContactRow({
                       )
                     )
                   }
-                  className="w-full resize-none border-none p-0 focus:outline-none text-gray-700"
+                  className="w-full resize-none border-none p-0 focus:outline-none text-gray-700 text-[11px]"
                   rows={2}
                 />
               </div>
@@ -434,154 +529,87 @@ function ContactRow({
   )
 }
 
-/* ================= KATEGORIE KOMPONENT ================= */
+/* ================= CSV/IMPORT DROPDOWN ================= */
 
-function CategorySection({
-  category,
-  isDeletingMode,
-  selectedItems,
-  onToggleSelection,
-  onUpdateCategoryName,
-  onDeleteCategory,
-  contacts,
-  search,
-  priorityAfterDays,
-  manualDrafts,
-  setManualDrafts,
-  onUpdateMailNote,
-  onUpdateContactName,
-  onUpdateContactEmail,
-  onDeleteContact,
-  onDeleteMail,
-  onDragContactToCategory
-}: {
-  category: Category
-  isDeletingMode: boolean
-  selectedItems: string[]
-  onToggleSelection: (itemId: string) => void
-  onUpdateCategoryName: (categoryId: string, name: string) => void
-  onDeleteCategory: (categoryId: string) => void
-  contacts: Contact[]
-  search: string
-  priorityAfterDays: number
-  manualDrafts: ManualDraft[]
-  setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
-  onUpdateMailNote: (contactId: string, mailId: string, note: string) => void
-  onUpdateContactName: (contactId: string, name: string) => void
-  onUpdateContactEmail: (contactId: string, email: string) => void
-  onDeleteContact: (contactId: string) => void
-  onDeleteMail: (contactId: string, mailId: string) => void
-  onDragContactToCategory: (contactId: string, categoryId: string) => void
-}) {
-  const [isEditingCategory, setIsEditingCategory] = useState(false)
-  const [tempCategoryName, setTempCategoryName] = useState(category.name)
+function CSVImportDropdown({ isDeletingMode }: { isDeletingMode: boolean }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const handleCategorySave = () => {
-    if (tempCategoryName.trim() && tempCategoryName !== category.name) {
-      onUpdateCategoryName(category.id, tempCategoryName.trim())
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
     }
-    setIsEditingCategory(false)
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleCSVExport = () => {
+    alert("CSV Export would be implemented here")
+    setIsOpen(false)
   }
 
-  // Reset temp value when category changes
-  useEffect(() => {
-    setTempCategoryName(category.name)
-  }, [category.name])
+  const handleFileUpload = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,.xlsx,.xls,.txt'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        alert(`File "${file.name}" selected for import. Implementation would parse the file and add contacts.`)
+      }
+    }
+    input.click()
+    setIsOpen(false)
+  }
 
   return (
-    <div
-      className="border rounded"
-      onDragOver={e => e.preventDefault()}
-      onDrop={e => {
-        if (isDeletingMode) return
-        const contactId = e.dataTransfer.getData("contact")
-        if (!contactId) return
-
-        onDragContactToCategory(contactId, category.id)
-      }}
-    >
-      {/* CATEGORY HEADER */}
-      <div className="px-4 py-2 flex items-center justify-between border-b bg-gray-50">
-        <div className="flex items-center gap-2 flex-1">
-          {/* AUSWAHL CHECKBOX (nur im Delete Mode) */}
-          {isDeletingMode && (
-            <input
-              type="checkbox"
-              checked={selectedItems.includes(`category_${category.id}`)}
-              onChange={() => onToggleSelection(`category_${category.id}`)}
-              className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
-            />
-          )}
-          
-          {/* KATEGORIE NAME - bearbeitbar */}
-          {isEditingCategory ? (
-            <div className="flex items-center gap-2 flex-1">
-              <input
-                type="text"
-                value={tempCategoryName}
-                onChange={(e) => setTempCategoryName(e.target.value)}
-                onBlur={handleCategorySave}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCategorySave()
-                  if (e.key === 'Escape') {
-                    setTempCategoryName(category.name)
-                    setIsEditingCategory(false)
-                  }
-                }}
-                className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-gray-700 flex-1 border rounded px-2 py-1 focus:ring-1 focus:ring-blue-500"
-                autoFocus
-              />
-              <button
-                onClick={handleCategorySave}
-                className="text-xs text-blue-500 hover:text-blue-700 px-2"
-              >
-                ✓
-              </button>
-            </div>
-          ) : (
-            <div 
-              className="text-xs font-semibold uppercase text-gray-700 flex-1 hover:bg-gray-100 px-2 py-1 rounded cursor-text"
-              onClick={() => setIsEditingCategory(true)}
-              title="Click to edit category name"
-            >
-              {category.name}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CONTACTS IN CATEGORY */}
-      {filterContacts(
-        contacts.filter(c => c.categoryId === category.id),
-        search
-      ).map(contact => (
-        <div key={contact.id} className="relative">
-          {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
-          {isDeletingMode && (
-            <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
-              <input
-                type="checkbox"
-                checked={selectedItems.includes(`contact_${contact.id}`)}
-                onChange={() => onToggleSelection(`contact_${contact.id}`)}
-                className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
-              />
-            </div>
-          )}
-          
-          <ContactRow
-            contact={contact}
-            priorityAfterDays={priorityAfterDays}
-            manualDrafts={manualDrafts}
-            setManualDrafts={setManualDrafts}
-            onUpdateMailNote={onUpdateMailNote}
-            onUpdateContactName={onUpdateContactName}
-            onUpdateContactEmail={onUpdateContactEmail}
-            onDeleteContact={isDeletingMode ? onDeleteContact : undefined}
-            onDeleteMail={isDeletingMode ? onDeleteMail : undefined}
-            isDeleting={isDeletingMode}
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => !isDeletingMode && setIsOpen(!isOpen)}
+        className={`w-10 h-10 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors ${
+          isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+        title={isDeletingMode ? "Cannot export in delete mode" : "Import/Export"}
+        disabled={isDeletingMode}
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
           />
+        </svg>
+      </button>
+      
+      {isOpen && !isDeletingMode && (
+        <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+          <button
+            onClick={handleCSVExport}
+            className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div>
+              <div className="font-medium">CSV Export</div>
+              <div className="text-xs text-gray-500">Download data as CSV</div>
+            </div>
+          </button>
+          
+          <button
+            onClick={handleFileUpload}
+            className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <div>
+              <div className="font-medium">File Upload</div>
+              <div className="text-xs text-gray-500">Import contacts from file</div>
+            </div>
+          </button>
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -610,15 +638,19 @@ function ExpandingSearchBar({
   }
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Prüfe ob der Fokus auf den Clear Button geht
     const relatedTarget = e.relatedTarget as HTMLElement
     if (relatedTarget?.tagName === 'BUTTON' && relatedTarget.title === 'Clear search') {
-      return // Nicht schließen wenn auf Clear Button geklickt wird
+      return
     }
     
     if (!search) {
       setIsExpanded(false)
     }
+  }
+
+  const handleClear = () => {
+    setSearch("")
+    inputRef.current?.focus()
   }
 
   return (
@@ -628,14 +660,9 @@ function ExpandingSearchBar({
           isExpanded ? "w-64" : "w-10"
         }`}
       >
-        {/* SUCH-ICON MIT SVG */}
         <button
           onClick={handleSearchClick}
-          className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors flex-shrink-0 ${
-            isExpanded 
-              ? "bg-gray-100 text-gray-600" 
-              : "bg-gray-100 hover:bg-gray-200 text-gray-600"
-          }`}
+          className={`w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors flex-shrink-0`}
           title="Search"
         >
           <svg 
@@ -653,70 +680,42 @@ function ExpandingSearchBar({
           </svg>
         </button>
 
-        {/* INPUT FIELD (expandiert) */}
         <input
           ref={inputRef}
           type="text"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value
+            setSearch(value)
+            
+            // Automatisch kürzen wenn zu lang
+            if (value.length > 25) {
+              setTimeout(() => {
+                setSearch(value.substring(0, 25))
+                inputRef.current?.setSelectionRange(25, 25)
+              }, 0)
+            }
+          }}
           onBlur={handleBlur}
           onFocus={onFocus}
-          placeholder="Search name or email..."
+          placeholder="Search..."
+          maxLength={25}
           className={`px-3 py-2 bg-transparent focus:outline-none transition-all duration-300 ${
             isExpanded ? "opacity-100 w-full" : "opacity-0 w-0"
           }`}
         />
       </div>
 
-      {/* CLEAR BUTTON (nur wenn Text vorhanden und expanded) */}
       {search && isExpanded && (
         <button
-          onClick={() => {
-            setSearch("")
-            inputRef.current?.focus()
-          }}
-          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          onClick={handleClear}
+          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
           title="Clear search"
-          tabIndex={-1} // Verhindert Fokus vom Blur Event
+          tabIndex={-1}
         >
           ✕
         </button>
       )}
-    </div>
-  )
-}
-
-/* ================= MANUAL DRAFT SOURCE ================= */
-
-function ManualDraftSource({ 
-  isDeletingMode, 
-  setManualDrafts 
-}: { 
-  isDeletingMode: boolean
-  setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
-}) {
-  if (isDeletingMode) return null // Versteckt im Delete Mode
-
-  return (
-    <div
-      draggable
-      onDragStart={e => {
-        const draft: ManualDraft = {
-          id: generateId(),
-          sentAt: new Date().toISOString()
-        }
-        setManualDrafts(prev => [...prev, draft])
-        e.dataTransfer.setData("manualDraft", draft.id)
-      }}
-      className="fixed bottom-6 right-6 z-50 cursor-grab"
-    >
-      <div className="relative w-36 h-24">
-        <div className="absolute inset-0 rounded border bg-gray-300 translate-x-2 translate-y-2" />
-        <div className="absolute inset-0 rounded border bg-gray-200 translate-x-1 translate-y-1" />
-        <div className="absolute inset-0 rounded border bg-white flex items-center justify-center text-xs font-semibold text-gray-600">
-          DRAG ME
-        </div>
-      </div>
     </div>
   )
 }
@@ -740,6 +739,9 @@ export default function DashboardPage() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isDeletingMode, setIsDeletingMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState<string[]>([])
+  const [darkMode, setDarkMode] = useState(false)
+  const [isDraggingCard, setIsDraggingCard] = useState(false)
+  const [dropAnimation, setDropAnimation] = useState(false)
 
   // ADD CONTACT
   const [showAddContact, setShowAddContact] = useState(false)
@@ -750,7 +752,24 @@ export default function DashboardPage() {
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
 
-  // Funktionen zum Schließen anderer Menüs
+  // Refs for click outside
+  const addMenuRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
+        setShowAddMenu(false)
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const closeAllMenus = () => {
     setShowAddMenu(false)
     setShowUserMenu(false)
@@ -760,18 +779,24 @@ export default function DashboardPage() {
     closeAllMenus()
   }
 
+  // Drag animation handlers
+  const handleDragStart = (draft: ManualDraft) => {
+    setIsDraggingCard(true)
+    setManualDrafts(prev => [...prev, draft])
+  }
+
+  const handleDropAnimation = () => {
+    setDropAnimation(true)
+    setTimeout(() => setDropAnimation(false), 300)
+  }
+
   // SCAN FUNCTION
   const handleScanMails = async () => {
     setScanning(true)
     closeAllMenus()
     
     try {
-      // Simuliere das Scannen (2 Sekunden)
       await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // Hier würde der echte Scan-Code stehen
-      // Z.B.: const result = await scanEmailAttachments()
-      
       alert("Scanning complete! Found 3 new emails.")
     } catch (error) {
       alert("Scanning failed: " + error)
@@ -780,7 +805,7 @@ export default function DashboardPage() {
     }
   }
 
-  // Funktion zum Aktualisieren von Mail-Notizen
+  // Update functions
   const updateMailNote = (contactId: string, mailId: string, note: string) => {
     setContacts(prev =>
       prev.map(contact => {
@@ -797,7 +822,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Funktion zum Aktualisieren von Kontakt-Namen
   const updateContactName = (contactId: string, name: string) => {
     setContacts(prev =>
       prev.map(contact =>
@@ -808,7 +832,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Funktion zum Aktualisieren von Kontakt-Email
   const updateContactEmail = (contactId: string, email: string) => {
     setContacts(prev =>
       prev.map(contact =>
@@ -819,7 +842,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Funktion zum Aktualisieren von Kategorie-Namen
   const updateCategoryName = (categoryId: string, name: string) => {
     setCategories(prev =>
       prev.map(category =>
@@ -830,7 +852,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Funktion zum Löschen einer Mail
   const deleteMail = (contactId: string, mailId: string) => {
     if (confirm("Are you sure you want to delete this mail?")) {
       setContacts(prev =>
@@ -847,7 +868,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Funktion zum Hinzufügen eines Kontakts
   const handleAddContact = () => {
     if (!newContactName.trim() || !newContactEmail.trim()) return
     
@@ -865,7 +885,6 @@ export default function DashboardPage() {
     setShowAddContact(false)
   }
 
-  // Funktion zum Hinzufügen einer Kategorie
   const handleAddCategory = () => {
     if (!newCategoryName.trim()) return
     
@@ -879,14 +898,12 @@ export default function DashboardPage() {
     setShowAddCategory(false)
   }
 
-  // Funktion zum Löschen eines Kontakts
   const handleDeleteContact = (contactId: string) => {
     if (confirm("Are you sure you want to delete this contact?")) {
       setContacts(prev => prev.filter(c => c.id !== contactId))
     }
   }
 
-  // Drag & Drop Handler für Kategorien
   const handleDragContactToCategory = (contactId: string, categoryId: string) => {
     setContacts(prev =>
       prev.map(c =>
@@ -897,7 +914,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Drag & Drop Handler für Uncategorized
   const handleDragContactToUncategorized = (contactId: string) => {
     setContacts(prev =>
       prev.map(c =>
@@ -908,7 +924,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Auswahl-Logik für Delete Mode
   const toggleItemSelection = (itemId: string) => {
     setSelectedItems(prev =>
       prev.includes(itemId)
@@ -917,15 +932,12 @@ export default function DashboardPage() {
     )
   }
 
-  // Alle ausgewählten Items löschen (nur EINE Bestätigung)
   const handleDeleteSelected = () => {
     if (selectedItems.length === 0) return
     
-    // Zähle Kontakte und Kategorien
     const contactIds = selectedItems.filter(id => id.startsWith("contact_"))
     const categoryIds = selectedItems.filter(id => id.startsWith("category_"))
     
-    // Erstelle eine Bestätigungsnachricht basierend auf was ausgewählt ist
     let message = ""
     if (contactIds.length > 0 && categoryIds.length > 0) {
       message = `Delete ${contactIds.length} contact(s) and ${categoryIds.length} category(ies)? Contacts in categories will be moved to Uncategorized.`
@@ -936,21 +948,15 @@ export default function DashboardPage() {
     }
     
     if (confirm(message)) {
-      // Kontakte löschen
       if (contactIds.length > 0) {
         setContacts(prev => 
           prev.filter(c => !contactIds.includes(`contact_${c.id}`))
         )
       }
       
-      // Kategorien löschen und deren Kontakte auf Uncategorized setzen
       if (categoryIds.length > 0) {
         const categoryIdsOnly = categoryIds.map(id => id.replace("category_", ""))
-        
-        // Kategorien löschen
         setCategories(prev => prev.filter(c => !categoryIdsOnly.includes(c.id)))
-        
-        // Kontakte auf Uncategorized setzen
         setContacts(prev =>
           prev.map(c =>
             c.categoryId && categoryIdsOnly.includes(c.categoryId)
@@ -980,8 +986,12 @@ export default function DashboardPage() {
     setShowUserMenu(false)
   }
 
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode)
+    setShowUserMenu(false)
+  }
+
   useEffect(() => {
-    // Simulierte Datenladen mit Fehlerbehandlung
     try {
       setTimeout(() => {
         setContacts(MOCK_CONTACTS)
@@ -996,60 +1006,43 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center text-sm text-gray-400">
+      <div className={`h-screen flex items-center justify-center text-sm ${darkMode ? 'text-gray-300' : 'text-gray-400'}`}>
         Loading dashboard…
       </div>
     )
   }
 
-  // Berechne ob Uncategorized angezeigt werden soll
   const hasUncategorizedContacts = contacts.filter(c => !c.categoryId).length > 0
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className={`h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900'}`}>
       {/* HEADER */}
-      <header className="flex items-center gap-4 px-6 py-4 border-b">
+      <header className={`flex items-center gap-4 px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="font-semibold text-lg">Audio Send Log</div>
 
-        <div className="flex-1" /> {/* Flex Spacer */}
+        <div className="flex-1" />
 
         {/* BUTTONS GRUPPE */}
         <div className="flex items-center gap-3">
-          {/* SUCHLEISTE (neben + Button) */}
+          {/* SUCHLEISTE */}
           <ExpandingSearchBar 
             search={search} 
             setSearch={setSearch}
             onFocus={handleSearchFocus}
           />
 
-          {/* CSV DOWNLOAD BUTTON */}
-          <button
-            onClick={() => {
-              if (isDeletingMode) return
-              alert("CSV Export would be implemented here")
-            }}
-            className={`w-10 h-10 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors ${
-              isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-            title={isDeletingMode ? "Cannot export in delete mode" : "Download CSV"}
-            disabled={isDeletingMode}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
-              />
-            </svg>
-          </button>
+          {/* CSV/IMPORT DROPDOWN */}
+          <CSVImportDropdown isDeletingMode={isDeletingMode} />
 
           {/* ADD BUTTON */}
-          <div className="relative">
+          <div className="relative" ref={addMenuRef}>
             <button
               onClick={() => {
                 if (isDeletingMode) return
                 setShowAddMenu(v => !v)
                 setShowUserMenu(false)
               }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors ${
+              className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50'} transition-colors ${
                 isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               title={isDeletingMode ? "Cannot add in delete mode" : "Add"}
@@ -1062,18 +1055,20 @@ export default function DashboardPage() {
             
             {/* ADD MENÜ */}
             {showAddMenu && !isDeletingMode && (
-              <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+              <div className={`absolute right-0 top-full mt-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg shadow-lg z-50 min-w-48`}>
                 <button
                   onClick={() => {
                     setShowAddContact(true)
                     setShowAddMenu(false)
                   }}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                  className={`w-full px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-50 text-gray-900'} flex items-center gap-2 transition-colors`}
                 >
-                  <span className="text-lg">👤</span>
+                  <svg viewBox="-1.6 -1.6 19.20 19.20" xmlns="http://www.w3.org/2000/svg" fill="currentColor" stroke="currentColor" strokeWidth="0.368" width="20" height="20">
+                    <path d="m 8 1 c -1.65625 0 -3 1.34375 -3 3 s 1.34375 3 3 3 s 3 -1.34375 3 -3 s -1.34375 -3 -3 -3 z m -1.5 7 c -2.492188 0 -4.5 2.007812 -4.5 4.5 v 0.5 c 0 1.109375 0.890625 2 2 2 h 6 v -1 h -3 v -4 h 3 v -1.972656 c -0.164062 -0.019532 -0.332031 -0.027344 -0.5 -0.027344 z m 4.5 0 v 3 h -3 v 2 h 3 v 3 h 2 v -3 h 3 v -2 h -3 v -3 z m 0 0"/>
+                  </svg>
                   <div>
                     <div className="font-medium">Add Contact</div>
-                    <div className="text-xs text-gray-500">New person to track</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New person to track</div>
                   </div>
                 </button>
                 
@@ -1082,19 +1077,19 @@ export default function DashboardPage() {
                     setShowAddCategory(true)
                     setShowAddMenu(false)
                   }}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t transition-colors"
+                  className={`w-full px-4 py-3 text-left border-t ${darkMode ? 'hover:bg-gray-700 text-gray-100 border-gray-700' : 'hover:bg-gray-50 text-gray-900 border-gray-200'} flex items-center gap-2 transition-colors`}
                 >
                   <span className="text-lg">📁</span>
                   <div>
                     <div className="font-medium">Add Category</div>
-                    <div className="text-xs text-gray-500">New group for contacts</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New group for contacts</div>
                   </div>
                 </button>
               </div>
             )}
           </div>
 
-          {/* MÜLLLEIMER BUTTON */}
+          {/* DELETE BUTTON */}
           <button
             onClick={() => {
               if (isDeletingMode && selectedItems.length > 0) {
@@ -1105,13 +1100,12 @@ export default function DashboardPage() {
                   setSelectedItems([])
                 }
               }
-              // Schließe alle anderen Menüs
               closeAllMenus()
             }}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
               isDeletingMode 
                 ? 'bg-red-500 text-white shadow-sm' 
-                : 'text-gray-600 hover:bg-gray-50'
+                : darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50'
             }`}
             title={isDeletingMode ? 
               selectedItems.length > 0 ? 
@@ -1126,14 +1120,14 @@ export default function DashboardPage() {
           </button>
 
           {/* USER MENU BUTTON */}
-          <div className="relative">
+          <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => {
                 if (isDeletingMode) return
                 setShowUserMenu(v => !v)
                 setShowAddMenu(false)
               }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-gray-600 hover:bg-gray-50 transition-colors ${
+              className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50'} transition-colors ${
                 isDeletingMode ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               title={isDeletingMode ? "Cannot open menu in delete mode" : "User menu"}
@@ -1146,10 +1140,10 @@ export default function DashboardPage() {
             
             {/* USER MENÜ */}
             {showUserMenu && !isDeletingMode && (
-              <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-48">
+              <div className={`absolute right-0 top-full mt-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg shadow-lg z-50 min-w-48`}>
                 <button
                   onClick={handleSettings}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                  className={`w-full px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-50 text-gray-900'} flex items-center gap-2 transition-colors`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -1157,119 +1151,100 @@ export default function DashboardPage() {
                   </svg>
                   <div>
                     <div className="font-medium">Settings</div>
-                    <div className="text-xs text-gray-500">App settings and preferences</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>App settings and preferences</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={toggleDarkMode}
+                  className={`w-full px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-50 text-gray-900'} flex items-center gap-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                  <div>
+                    <div className="font-medium">{darkMode ? 'Light Mode' : 'Dark Mode'}</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Toggle theme</div>
                   </div>
                 </button>
                 
                 <button
                   onClick={handleChangeAccount}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t"
+                  className={`w-full px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-50 text-gray-900'} flex items-center gap-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <div>
                     <div className="font-medium">Change Account</div>
-                    <div className="text-xs text-gray-500">Switch to different account</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Switch to different account</div>
                   </div>
                 </button>
                 
                 <button
                   onClick={handleLogout}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-t text-red-600"
+                  className={`w-full px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} flex items-center gap-2 border-t ${darkMode ? 'border-gray-700 text-red-400' : 'border-gray-200 text-red-600'}`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
                   <div>
                     <div className="font-medium">Log Out</div>
-                    <div className="text-xs text-gray-500">Sign out of your account</div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Sign out of your account</div>
                   </div>
                 </button>
               </div>
             )}
           </div>
 
-          {/* SCAN SENT MAILS BUTTON - MIT LOADING ANIMATION */}
+          {/* SCAN BUTTON - einfarbig */}
           <button
             onClick={handleScanMails}
             disabled={scanning}
-            className="relative rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2.5 text-sm font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed group"
+            className={`relative rounded-lg ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white px-6 py-2.5 text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed`}
           >
             {scanning ? (
-              <>
-                {/* LOADING SPINNER */}
-                <div className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Scanning...</span>
-                </div>
-              </>
+              <div className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Scanning...</span>
+              </div>
             ) : (
-              <>
-                <span className="relative z-10">Scan Sent Mails</span>
-                {/* HOVER EFFECT */}
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
-                {/* PULSING EFFECT */}
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg blur opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
-              </>
+              <span>Scan Sent Mails</span>
             )}
           </button>
         </div>
       </header>
 
       {/* CONTENT */}
-      <main className="flex-1 overflow-auto">
+      <main className={`flex-1 overflow-auto ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
         <div className="min-w-[900px] px-4 py-4 space-y-8">
           {/* CATEGORIES */}
           {categories.map(category => (
-            <CategorySection
-              key={category.id}
-              category={category}
-              isDeletingMode={isDeletingMode}
-              selectedItems={selectedItems}
-              onToggleSelection={toggleItemSelection}
-              onUpdateCategoryName={updateCategoryName}
-              onDeleteCategory={() => {}} // Wird jetzt in handleDeleteSelected gehandhabt
-              contacts={contacts}
-              search={search}
-              priorityAfterDays={priorityAfterDays}
-              manualDrafts={manualDrafts}
-              setManualDrafts={setManualDrafts}
-              onUpdateMailNote={updateMailNote}
-              onUpdateContactName={updateContactName}
-              onUpdateContactEmail={updateContactEmail}
-              onDeleteContact={handleDeleteContact}
-              onDeleteMail={deleteMail}
-              onDragContactToCategory={handleDragContactToCategory}
-            />
-          ))}
-
-          {/* UNCATEGORIZED (nur anzeigen wenn Kontakte vorhanden) */}
-          {hasUncategorizedContacts && (
             <div
-              className="border rounded"
+              key={category.id}
+              className={`border rounded ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
               onDragOver={e => e.preventDefault()}
               onDrop={e => {
                 if (isDeletingMode) return
                 const contactId = e.dataTransfer.getData("contact")
                 if (!contactId) return
-
-                handleDragContactToUncategorized(contactId)
+                handleDragContactToCategory(contactId, category.id)
               }}
             >
-              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-b bg-gray-50">
-                Uncategorized
+              <div className={`px-4 py-2 border-b ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                <div className="text-xs font-semibold uppercase">
+                  {category.name}
+                </div>
               </div>
 
               {filterContacts(
-                contacts.filter(c => !c.categoryId),
+                contacts.filter(c => c.categoryId === category.id),
                 search
               ).map(contact => (
                 <div key={contact.id} className="relative">
-                  {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
                   {isDeletingMode && (
                     <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
                       <input
@@ -1292,6 +1267,59 @@ export default function DashboardPage() {
                     onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
                     onDeleteMail={isDeletingMode ? deleteMail : undefined}
                     isDeleting={isDeletingMode}
+                    onDropAnimation={handleDropAnimation}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* UNCATEGORIZED */}
+          {hasUncategorizedContacts && (
+            <div
+              className={`border rounded ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                if (isDeletingMode) return
+                const contactId = e.dataTransfer.getData("contact")
+                if (!contactId) return
+                handleDragContactToUncategorized(contactId)
+              }}
+            >
+              <div className={`px-4 py-2 border-b ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                <div className={`text-xs font-semibold uppercase ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                  Uncategorized
+                </div>
+              </div>
+
+              {filterContacts(
+                contacts.filter(c => !c.categoryId),
+                search
+              ).map(contact => (
+                <div key={contact.id} className="relative">
+                  {isDeletingMode && (
+                    <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(`contact_${contact.id}`)}
+                        onChange={() => toggleItemSelection(`contact_${contact.id}`)}
+                        className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
+                      />
+                    </div>
+                  )}
+                  
+                  <ContactRow
+                    contact={contact}
+                    priorityAfterDays={priorityAfterDays}
+                    manualDrafts={manualDrafts}
+                    setManualDrafts={setManualDrafts}
+                    onUpdateMailNote={updateMailNote}
+                    onUpdateContactName={updateContactName}
+                    onUpdateContactEmail={updateContactEmail}
+                    onDeleteContact={isDeletingMode ? handleDeleteContact : undefined}
+                    onDeleteMail={isDeletingMode ? deleteMail : undefined}
+                    isDeleting={isDeletingMode}
+                    onDropAnimation={handleDropAnimation}
                   />
                 </div>
               ))}
@@ -1301,32 +1329,32 @@ export default function DashboardPage() {
           {/* ADD CONTACT MODAL */}
           {showAddContact && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-96">
+              <div className={`rounded-lg p-6 w-96 ${darkMode ? 'bg-gray-800 text-gray-100' : 'bg-white'}`}>
                 <h3 className="font-semibold mb-4">Add New Contact</h3>
                 <input
                   type="text"
                   placeholder="Name"
                   value={newContactName}
                   onChange={e => setNewContactName(e.target.value)}
-                  className="w-full border rounded px-3 py-2 mb-3"
+                  className={`w-full border rounded px-3 py-2 mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
                 />
                 <input
                   type="email"
                   placeholder="Email"
                   value={newContactEmail}
                   onChange={e => setNewContactEmail(e.target.value)}
-                  className="w-full border rounded px-3 py-2 mb-4"
+                  className={`w-full border rounded px-3 py-2 mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
                 />
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setShowAddContact(false)}
-                    className="px-4 py-2 border rounded"
+                    className={`px-4 py-2 border rounded ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50'}`}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleAddContact}
-                    className="px-4 py-2 bg-black text-white rounded"
+                    className={`px-4 py-2 rounded ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
                   >
                     Add
                   </button>
@@ -1338,25 +1366,25 @@ export default function DashboardPage() {
           {/* ADD CATEGORY MODAL */}
           {showAddCategory && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-96">
+              <div className={`rounded-lg p-6 w-96 ${darkMode ? 'bg-gray-800 text-gray-100' : 'bg-white'}`}>
                 <h3 className="font-semibold mb-4">Add New Category</h3>
                 <input
                   type="text"
                   placeholder="Category name"
                   value={newCategoryName}
                   onChange={e => setNewCategoryName(e.target.value)}
-                  className="w-full border rounded px-3 py-2 mb-4"
+                  className={`w-full border rounded px-3 py-2 mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
                 />
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setShowAddCategory(false)}
-                    className="px-4 py-2 border rounded"
+                    className={`px-4 py-2 border rounded ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50'}`}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleAddCategory}
-                    className="px-4 py-2 bg-black text-white rounded"
+                    className={`px-4 py-2 rounded ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
                   >
                     Add
                   </button>
@@ -1367,10 +1395,11 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* MANUAL DRAFT SOURCE */}
-      <ManualDraftSource 
-        isDeletingMode={isDeletingMode}
+      {/* DRAGGABLE MANUAL CARD */}
+      <DraggableManualCard 
+        isDragging={isDraggingCard}
         setManualDrafts={setManualDrafts}
+        onDragStart={handleDragStart}
       />
     </div>
   )
