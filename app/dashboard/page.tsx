@@ -9,12 +9,18 @@ type Attachment = {
   filename: string
 }
 
+type SentMailStatus = "unread" | "singleCheck" | "doubleCheck" | "read"
+
 type SentMail = {
   id: string
   sentAt: string
   attachments: Attachment[]
   note?: string
   source?: "gmail" | "manual"
+  /** Status aus Gmail: ungelesen / ein Häkchen / zwei Häkchen / gelesen */
+  status?: SentMailStatus
+  /** Optional: originale Gmail-Labels (z.B. UNREAD, ✓, ✓✓ etc.) */
+  gmailLabels?: string[]
 }
 
 type Contact = {
@@ -60,7 +66,10 @@ const MOCK_CONTACTS: Contact[] = [
         attachments: [
           { id: "a1", filename: "beat_140bpm.wav" },
           { id: "a2", filename: "beat_alt.wav" }
-        ]
+        ],
+        source: "gmail",
+        status: "unread",
+        gmailLabels: ["UNREAD", "✓✓"]
       }
     ]
   },
@@ -183,6 +192,47 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url)
 }
 
+/** Farbschema einer Mail-Karte auf Basis von Gmail-Status / Labels */
+function getMailStatusTheme(mail: SentMail) {
+  let status: SentMailStatus | undefined = mail.status
+
+  // Fallback: aus Labels ableiten, wenn kein expliziter Status gesetzt ist
+  if (!status && mail.gmailLabels && mail.gmailLabels.length > 0) {
+    const labels = mail.gmailLabels.map(l => l.toLowerCase())
+    if (labels.some(l => l.includes("unread"))) {
+      status = "unread"
+    } else if (labels.some(l => l.includes("double") || l.includes("✓✓"))) {
+      status = "doubleCheck"
+    } else if (labels.some(l => l.includes("single") || l.includes("✓"))) {
+      status = "singleCheck"
+    }
+  }
+
+  switch (status) {
+    case "unread":
+      return {
+        card: "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-700",
+        dot: "bg-blue-500"
+      }
+    case "singleCheck":
+      return {
+        card: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-700",
+        dot: "bg-amber-500"
+      }
+    case "doubleCheck":
+    case "read":
+      return {
+        card: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-700",
+        dot: "bg-emerald-500"
+      }
+    default:
+      return {
+        card: "bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800",
+        dot: "bg-zinc-300 dark:bg-zinc-600"
+      }
+  }
+}
+
 /* ================= ICONS ================= */
 
 function AddContactIcon({ className }: { className?: string }) {
@@ -257,19 +307,39 @@ function useOnClickOutside(
 
 function SentMailCard({
   mail,
+  contactId,
   onChangeNote,
   isDeleting,
-  onDeleteMail
+  onDeleteMail,
+  isJustDropped
 }: {
   mail: SentMail
+  contactId: string
   onChangeNote: (note: string) => void
   isDeleting?: boolean
   onDeleteMail?: () => void
+  isJustDropped?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const theme = getMailStatusTheme(mail)
 
   return (
-    <div className="min-w-[160px] rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-2 text-[11px] relative group">
+    <div
+      className={[
+        "min-w-[160px] rounded px-2 py-2 text-[11px] relative group border transition-transform",
+        theme.card,
+        isJustDropped ? "animate-dropIn" : ""
+      ].join(" ")}
+      draggable={!isDeleting}
+      onDragStart={e => {
+        if (isDeleting) return
+        e.dataTransfer.effectAllowed = "move"
+        e.dataTransfer.setData(
+          "sentMail",
+          JSON.stringify({ contactId, mailId: mail.id })
+        )
+      }}
+    >
       {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
       {isDeleting && onDeleteMail && (
         <button
@@ -282,7 +352,10 @@ function SentMailCard({
       )}
 
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[10px] text-zinc-500">{formatDate(mail.sentAt)}</div>
+        <div className="flex items-center gap-1">
+          <span className={`inline-block w-2 h-2 rounded-full ${theme.dot}`} />
+          <div className="text-[10px] text-zinc-500">{formatDate(mail.sentAt)}</div>
+        </div>
 
         {/* NOTIZ BUTTON oben rechts */}
         <button
@@ -402,7 +475,8 @@ function ContactRow({
   onUpdateContactEmail,
   isDeleting,
   onManualDraftPlaced,
-  justPlacedDraftId
+  justPlacedDraftId,
+  onReorderMail
 }: {
   contact: Contact
   priorityAfterDays: number
@@ -416,22 +490,21 @@ function ContactRow({
   isDeleting?: boolean
   onManualDraftPlaced?: (draftId: string) => void
   justPlacedDraftId?: string | null
+  onReorderMail?: (contactId: string, mailId: string, newIndex: number) => void
 }) {
-  const sortedMails = useMemo(() => {
-    return [...contact.sentMails].sort(
-      (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
-    )
-  }, [contact.sentMails])
+  const mails = contact.sentMails ?? []
 
   const lastSent = useMemo(() => {
-    if (sortedMails.length === 0) return undefined
-    return sortedMails[sortedMails.length - 1].sentAt
-  }, [sortedMails])
+    if (mails.length === 0) return undefined
+    return mails[mails.length - 1].sentAt
+  }, [mails])
 
   const [isEditingName, setIsEditingName] = useState(false)
   const [isEditingEmail, setIsEditingEmail] = useState(false)
   const [tempName, setTempName] = useState(contact.name)
   const [tempEmail, setTempEmail] = useState(contact.email)
+  const [activeInsertIndex, setActiveInsertIndex] = useState<number | null>(null)
+  const [justDroppedMailId, setJustDroppedMailId] = useState<string | null>(null)
 
   const scrollerRef = useRef<HTMLDivElement>(null)
 
@@ -459,12 +532,52 @@ function ContactRow({
   useEffect(() => {
     const el = scrollerRef.current
     if (!el) return
-    // next tick, damit DOM fertig ist
     const t = window.setTimeout(() => {
       el.scrollLeft = el.scrollWidth
     }, 0)
     return () => window.clearTimeout(t)
-  }, [contact.id, sortedMails.length, manualDrafts.length])
+  }, [contact.id, mails.length, manualDrafts.length])
+
+  const handleDropMailAt = (index: number, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setActiveInsertIndex(null)
+
+    const raw = e.dataTransfer.getData("sentMail")
+    if (!raw) return
+
+    try {
+      const payload = JSON.parse(raw) as { contactId: string; mailId: string }
+      if (!payload.mailId || payload.contactId !== contact.id) return
+      onReorderMail?.(contact.id, payload.mailId, index)
+      setJustDroppedMailId(payload.mailId)
+      window.setTimeout(() => setJustDroppedMailId(null), 450)
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleDragOverZone = (index: number, e: React.DragEvent<HTMLDivElement>) => {
+    const raw = e.dataTransfer.getData("sentMail")
+    if (!raw) return
+    e.preventDefault()
+    if (activeInsertIndex !== index) setActiveInsertIndex(index)
+  }
+
+  const clearActiveInsert = () => {
+    setActiveInsertIndex(null)
+  }
+
+  const renderDropZone = (index: number) => (
+    <div
+      key={`dz-${index}`}
+      onDragOver={e => handleDragOverZone(index, e)}
+      onDrop={e => handleDropMailAt(index, e)}
+      onDragLeave={clearActiveInsert}
+      className={`h-10 w-1 rounded-full self-stretch transition-colors ${
+        activeInsertIndex === index ? "bg-blue-500" : "bg-transparent"
+      }`}
+    />
+  )
 
   return (
     <div
@@ -475,6 +588,7 @@ function ContactRow({
       ].join(" ")}
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
+        // Drop von Manual Drafts (bestehende Logik beibehalten)
         if (isDeleting) return
         const draftId = e.dataTransfer.getData("manualDraft")
         if (!draftId) return
@@ -584,14 +698,19 @@ function ContactRow({
       {/* RIGHT */}
       <div ref={scrollerRef} className="overflow-x-auto">
         <div className="flex gap-2 px-3 py-2 items-center">
-          {sortedMails.map(mail => (
-            <SentMailCard
-              key={mail.id}
-              mail={mail}
-              onChangeNote={note => onUpdateMailNote(contact.id, mail.id, note)}
-              isDeleting={isDeleting}
-              onDeleteMail={() => onDeleteMail?.(contact.id, mail.id)}
-            />
+          {renderDropZone(0)}
+          {mails.map((mail, index) => (
+            <React.Fragment key={mail.id}>
+              <SentMailCard
+                mail={mail}
+                contactId={contact.id}
+                onChangeNote={note => onUpdateMailNote(contact.id, mail.id, note)}
+                isDeleting={isDeleting}
+                onDeleteMail={() => onDeleteMail?.(contact.id, mail.id)}
+                isJustDropped={justDroppedMailId === mail.id}
+              />
+              {renderDropZone(index + 1)}
+            </React.Fragment>
           ))}
 
           {manualDrafts
@@ -631,7 +750,8 @@ function CategorySection({
   onDeleteMail,
   onDragContactToCategory,
   onManualDraftPlaced,
-  justPlacedDraftId
+  justPlacedDraftId,
+  onReorderMail
 }: {
   category: Category
   isDeletingMode: boolean
@@ -651,6 +771,7 @@ function CategorySection({
   onDragContactToCategory: (contactId: string, categoryId: string) => void
   onManualDraftPlaced: (draftId: string) => void
   justPlacedDraftId?: string | null
+  onReorderMail: (contactId: string, mailId: string, newIndex: number) => void
 }) {
   const [isEditingCategory, setIsEditingCategory] = useState(false)
   const [tempCategoryName, setTempCategoryName] = useState(category.name)
@@ -756,6 +877,7 @@ function CategorySection({
             isDeleting={isDeletingMode}
             onManualDraftPlaced={onManualDraftPlaced}
             justPlacedDraftId={justPlacedDraftId}
+            onReorderMail={onReorderMail}
           />
         </div>
       ))}
@@ -1006,7 +1128,12 @@ export default function DashboardPage() {
     setContacts(prev =>
       prev.map(contact => {
         if (contact.id === contactId) {
-          return { ...contact, sentMails: contact.sentMails.map(mail => (mail.id === mailId ? { ...mail, note } : mail)) }
+          return {
+            ...contact,
+            sentMails: contact.sentMails.map(mail =>
+              mail.id === mailId ? { ...mail, note } : mail
+            )
+          }
         }
         return contact
       })
@@ -1090,6 +1217,23 @@ export default function DashboardPage() {
   // Drag & Drop Handler für Uncategorized
   const handleDragContactToUncategorized = (contactId: string) => {
     setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, categoryId: null } : c)))
+  }
+
+  // NEU: Mail innerhalb eines Kontakts umsortieren
+  const handleReorderMail = (contactId: string, mailId: string, newIndex: number) => {
+    setContacts(prev =>
+      prev.map(c => {
+        if (c.id !== contactId) return c
+        const currentIndex = c.sentMails.findIndex(m => m.id === mailId)
+        if (currentIndex === -1 || currentIndex === newIndex) return c
+
+        const next = [...c.sentMails]
+        const [moved] = next.splice(currentIndex, 1)
+        const clampedIndex = Math.max(0, Math.min(newIndex, next.length))
+        next.splice(clampedIndex, 0, moved)
+        return { ...c, sentMails: next }
+      })
+    )
   }
 
   // Auswahl-Logik für Delete Mode
@@ -1569,6 +1713,7 @@ export default function DashboardPage() {
               onDragContactToCategory={handleDragContactToCategory}
               onManualDraftPlaced={handleManualDraftPlaced}
               justPlacedDraftId={justPlacedDraftId}
+              onReorderMail={handleReorderMail}
             />
           ))}
 
@@ -1614,6 +1759,7 @@ export default function DashboardPage() {
                     isDeleting={isDeletingMode}
                     onManualDraftPlaced={handleManualDraftPlaced}
                     justPlacedDraftId={justPlacedDraftId}
+                    onReorderMail={handleReorderMail}
                   />
                 </div>
               ))}
@@ -1683,20 +1829,37 @@ export default function DashboardPage() {
       {/* SETTINGS MODAL */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => setShowSettingsModal(false)}>
-          <div className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[420px] border border-zinc-200 dark:border-zinc-800" onMouseDown={e => e.stopPropagation()}>
+          <div
+            className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[420px] border border-zinc-200 dark:border-zinc-800"
+            onMouseDown={e => e.stopPropagation()}
+          >
             <h3 className="font-semibold mb-4">Settings</h3>
 
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <div className="font-medium">Dark Mode</div>
-                <div className="text-xs text-zinc-500">Toggle light/dark UI</div>
+            <div className="mb-4">
+              <div className="font-medium mb-1">Theme</div>
+              <div className="text-xs text-zinc-500 mb-2">Choose between light and dark mode</div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setTheme("light")}
+                  className={`px-3 py-1 rounded border text-xs ${
+                    theme === "light"
+                      ? "border-zinc-900 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "border-zinc-200 dark:border-zinc-700"
+                  }`}
+                >
+                  Light
+                </button>
+                <button
+                  onClick={() => setTheme("dark")}
+                  className={`px-3 py-1 rounded border text-xs ${
+                    theme === "dark"
+                      ? "border-zinc-900 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "border-zinc-200 dark:border-zinc-700"
+                  }`}
+                >
+                  Dark
+                </button>
               </div>
-              <button
-                onClick={() => setTheme(t => (t === "dark" ? "light" : "dark"))}
-                className="px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
-              >
-                {theme === "dark" ? "On" : "Off"}
-              </button>
             </div>
 
             <div className="py-2">
@@ -1771,7 +1934,10 @@ export default function DashboardPage() {
               >
                 Cancel
               </button>
-              <button onClick={handleImportConfirm} className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black">
+              <button
+                onClick={handleImportConfirm}
+                className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black"
+              >
                 Import
               </button>
             </div>
@@ -1779,7 +1945,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* MANUAL DRAFT SOURCE */}
+      {/* FLOATING MANUAL DRAFT SOURCE */}
       <ManualDraftSource
         isDeletingMode={isDeletingMode}
         setManualDrafts={setManualDrafts}
