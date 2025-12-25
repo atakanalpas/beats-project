@@ -13,13 +13,14 @@ type SentMailStatus = "unread" | "singleCheck" | "doubleCheck" | "read"
 
 type SentMail = {
   id: string
-  sentAt: string
+  /** Kann bei Import fehlen → optional & robust gehandhabt */
+  sentAt?: string
   attachments: Attachment[]
   note?: string
   source?: "gmail" | "manual"
   /** Status aus Gmail: ungelesen / ein Häkchen / zwei Häkchen / gelesen */
   status?: SentMailStatus
-  /** Optional: originale Gmail-Labels (z.B. UNREAD, ✓, ✓✓ etc.) */
+  /** Optionale originale Gmail-Labels (z. B. UNREAD, ✓, ✓✓ etc.) */
   gmailLabels?: string[]
 }
 
@@ -84,7 +85,6 @@ const MOCK_CONTACTS: Contact[] = [
 
 /* ================= HELPERS ================= */
 
-// SICHERE UUID GENERATOR
 const generateId = () => {
   return "id-" + Math.random().toString(36).substr(2, 9)
 }
@@ -98,17 +98,22 @@ function filterContacts(list: Contact[], search: string) {
   )
 }
 
-function daysSince(dateIso?: string) {
+function safeDateMs(dateIso?: string) {
   if (!dateIso) return undefined
-  const days =
-    (Date.now() - new Date(dateIso).getTime()) / (1000 * 60 * 60 * 24)
-  return days
+  const t = new Date(dateIso).getTime()
+  if (!Number.isFinite(t)) return undefined
+  return t
+}
+
+function daysSince(dateIso?: string) {
+  const ms = safeDateMs(dateIso)
+  if (ms === undefined) return undefined
+  return (Date.now() - ms) / (1000 * 60 * 60 * 24)
 }
 
 function getStatusColor(lastSentAt?: string, priorityAfterDays = 30) {
-  if (!lastSentAt) return "bg-gray-300 dark:bg-zinc-700"
-
-  const days = daysSince(lastSentAt) ?? 0
+  const days = daysSince(lastSentAt)
+  if (days === undefined) return "bg-gray-300 dark:bg-zinc-700"
 
   if (days >= priorityAfterDays) return "bg-red-400"
   if (days >= priorityAfterDays * 0.6) return "bg-orange-300"
@@ -117,8 +122,8 @@ function getStatusColor(lastSentAt?: string, priorityAfterDays = 30) {
 }
 
 function getStatusTint(lastSentAt?: string, priorityAfterDays = 30) {
-  if (!lastSentAt) return "bg-zinc-50 dark:bg-zinc-900/40"
-  const days = daysSince(lastSentAt) ?? 0
+  const days = daysSince(lastSentAt)
+  if (days === undefined) return "bg-zinc-50 dark:bg-zinc-900/40"
 
   if (days >= priorityAfterDays) return "bg-red-50 dark:bg-red-950/30"
   if (days >= priorityAfterDays * 0.6) return "bg-orange-50 dark:bg-orange-950/25"
@@ -126,8 +131,11 @@ function getStatusTint(lastSentAt?: string, priorityAfterDays = 30) {
   return "bg-green-50 dark:bg-green-950/20"
 }
 
-function formatDate(dateIso: string) {
-  return new Date(dateIso).toLocaleDateString()
+function formatDate(dateIso?: string) {
+  if (!dateIso) return "—"
+  const ms = safeDateMs(dateIso)
+  if (ms === undefined) return "—"
+  return new Date(ms).toLocaleDateString()
 }
 
 function sanitizeEmail(email: string) {
@@ -135,12 +143,10 @@ function sanitizeEmail(email: string) {
 }
 
 function isValidEmail(email: string) {
-  // bewusst simpel (Frontend only)
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
 function parseCsvSimple(text: string): ImportedRow[] {
-  // Unterstützt CSV/TSV/; getrennt – erwartet Spalte A = Name, Spalte B = Mail
   const lines = text
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
@@ -150,7 +156,6 @@ function parseCsvSimple(text: string): ImportedRow[] {
 
   if (lines.length === 0) return []
 
-  // delimiter guess
   const sample = lines.slice(0, 5).join("\n")
   const candidates = [",", ";", "\t"]
   const delimiter =
@@ -171,7 +176,6 @@ function parseCsvSimple(text: string): ImportedRow[] {
     rows.push({ name, email })
   }
 
-  // header detection (wenn erste Zeile "name,email" oder ähnlich)
   if (rows.length > 1) {
     const h = (rows[0].name + "," + rows[0].email).toLowerCase()
     if (h.includes("name") && (h.includes("mail") || h.includes("email"))) {
@@ -196,16 +200,11 @@ function downloadTextFile(filename: string, content: string) {
 function getMailStatusTheme(mail: SentMail) {
   let status: SentMailStatus | undefined = mail.status
 
-  // Fallback: aus Labels ableiten, wenn kein expliziter Status gesetzt ist
   if (!status && mail.gmailLabels && mail.gmailLabels.length > 0) {
     const labels = mail.gmailLabels.map(l => l.toLowerCase())
-    if (labels.some(l => l.includes("unread"))) {
-      status = "unread"
-    } else if (labels.some(l => l.includes("double") || l.includes("✓✓"))) {
-      status = "doubleCheck"
-    } else if (labels.some(l => l.includes("single") || l.includes("✓"))) {
-      status = "singleCheck"
-    }
+    if (labels.some(l => l.includes("unread"))) status = "unread"
+    else if (labels.some(l => l.includes("double") || l.includes("✓✓"))) status = "doubleCheck"
+    else if (labels.some(l => l.includes("single") || l.includes("✓"))) status = "singleCheck"
   }
 
   switch (status) {
@@ -236,7 +235,6 @@ function getMailStatusTheme(mail: SentMail) {
 /* ================= ICONS ================= */
 
 function AddContactIcon({ className }: { className?: string }) {
-  // vom User geliefert – fill auf currentColor umgestellt
   return (
     <svg
       viewBox="-1.6 -1.6 19.2 19.2"
@@ -250,7 +248,6 @@ function AddContactIcon({ className }: { className?: string }) {
 }
 
 function AddCategoryIcon({ className }: { className?: string }) {
-  // SVG Repo file – fill auf currentColor umgestellt
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
       <path
@@ -288,19 +285,68 @@ function useOnClickOutside(
   enabled: boolean
 ) {
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return
 
     const onMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      const clickedInside = refs.some(
-        (r) => r.current?.contains(target)
-      );
-      if (!clickedInside) handler();
-    };
+      const target = e.target as Node
+      const clickedInside = refs.some(r => r.current?.contains(target))
+      if (!clickedInside) handler()
+    }
 
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [refs, handler, enabled]);
+    document.addEventListener("mousedown", onMouseDown)
+    return () => document.removeEventListener("mousedown", onMouseDown)
+  }, [refs, handler, enabled])
+}
+
+/* ================= HOVER MARQUEE (SPOTIFY-STYLE) ================= */
+
+function HoverMarquee({ text }: { text: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLSpanElement>(null)
+  const [overflow, setOverflow] = useState(false)
+
+  useEffect(() => {
+    const container = containerRef.current
+    const span = textRef.current
+    if (!container || !span) return
+
+    const check = () => {
+      const cWidth = container.clientWidth
+      const tWidth = span.scrollWidth
+      setOverflow(tWidth > cWidth + 4)
+    }
+
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(container)
+    ro.observe(span)
+
+    return () => ro.disconnect()
+  }, [text])
+
+  return (
+    <div
+      ref={containerRef}
+      className="marquee-container overflow-hidden whitespace-nowrap"
+      title={text}
+    >
+      <div
+        className={
+          "marquee-inner inline-flex items-center gap-8" +
+          (overflow ? " marquee-active" : "")
+        }
+      >
+        <span ref={textRef} className="block">
+          {text}
+        </span>
+        {overflow && (
+          <span className="block" aria-hidden="true">
+            {text}
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 /* ================= COMPONENTS ================= */
@@ -340,7 +386,6 @@ function SentMailCard({
         )
       }}
     >
-      {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
       {isDeleting && onDeleteMail && (
         <button
           onClick={onDeleteMail}
@@ -357,7 +402,6 @@ function SentMailCard({
           <div className="text-[10px] text-zinc-500">{formatDate(mail.sentAt)}</div>
         </div>
 
-        {/* NOTIZ BUTTON oben rechts */}
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
@@ -376,7 +420,6 @@ function SentMailCard({
         ))}
       </ul>
 
-      {/* NOTE AREA */}
       {open && (
         <div className="mt-2 border-t border-zinc-200 dark:border-zinc-800 pt-2">
           <textarea
@@ -389,7 +432,6 @@ function SentMailCard({
         </div>
       )}
 
-      {/* show note preview even when closed */}
       {!open && mail.note && (
         <div className="mt-2 text-[10px] text-zinc-600 dark:text-zinc-400 italic truncate">{mail.note}</div>
       )}
@@ -417,7 +459,6 @@ function ManualDraftCard({
         isJustPlaced ? "animate-dropIn" : ""
       ].join(" ")}
     >
-      {/* LÖSCH-KREUZ für Manual Drafts (NUR im Delete Mode) */}
       {isDeleting && (
         <button
           onClick={() => setManualDrafts(prev => prev.filter(d => d.id !== draft.id))}
@@ -431,7 +472,6 @@ function ManualDraftCard({
       <div className="flex items-start justify-between gap-2">
         <div className="text-[10px] text-zinc-500 mb-1">{formatDate(draft.sentAt)}</div>
 
-        {/* NOTIZ BUTTON oben rechts */}
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
@@ -494,9 +534,22 @@ function ContactRow({
 }) {
   const mails = contact.sentMails ?? []
 
+  // robust: nimmt das neueste gültige Datum aller Mails, ignoriert fehlende/kaputte
   const lastSent = useMemo(() => {
-    if (mails.length === 0) return undefined
-    return mails[mails.length - 1].sentAt
+    let maxMs: number | undefined
+    let bestIso: string | undefined
+
+    for (const m of mails) {
+      if (!m.sentAt) continue
+      const ms = safeDateMs(m.sentAt)
+      if (ms === undefined) continue
+      if (maxMs === undefined || ms > maxMs) {
+        maxMs = ms
+        bestIso = m.sentAt
+      }
+    }
+
+    return bestIso
   }, [mails])
 
   const [isEditingName, setIsEditingName] = useState(false)
@@ -522,13 +575,11 @@ function ContactRow({
     setIsEditingEmail(false)
   }
 
-  // Reset temp values when contact changes
   useEffect(() => {
     setTempName(contact.name)
     setTempEmail(contact.email)
   }, [contact.name, contact.email])
 
-  // immer rechts starten (neueste sichtbar)
   useEffect(() => {
     const el = scrollerRef.current
     if (!el) return
@@ -588,7 +639,6 @@ function ContactRow({
       ].join(" ")}
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
-        // Drop von Manual Drafts (bestehende Logik beibehalten)
         if (isDeleting) return
         const draftId = e.dataTransfer.getData("manualDraft")
         if (!draftId) return
@@ -599,7 +649,6 @@ function ContactRow({
     >
       {/* LEFT */}
       <div className="sticky left-0 z-10 bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 flex">
-        {/* LÖSCH-KREUZ (nur im Lösch-Modus) */}
         {isDeleting && onDeleteContact && (
           <button
             onClick={() => onDeleteContact(contact.id)}
@@ -610,7 +659,6 @@ function ContactRow({
           </button>
         )}
 
-        {/* DRAG HANDLE */}
         <div
           draggable={!isDeleting}
           onDragStart={e => e.dataTransfer.setData("contact", contact.id)}
@@ -620,12 +668,10 @@ function ContactRow({
           ⠿
         </div>
 
-        {/* STATUS BAR */}
         <div className={`w-1 ${getStatusColor(lastSent, priorityAfterDays)}`} />
 
-        {/* CONTACT INFO */}
         <div className="px-4 py-2 flex-1">
-          {/* NAME - bearbeitbar */}
+          {/* NAME */}
           <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
             {isEditingName ? (
               <div className="flex items-center gap-2">
@@ -659,8 +705,8 @@ function ContactRow({
             )}
           </div>
 
-          {/* EMAIL - bearbeitbar */}
-          <div className="text-[11px] text-zinc-600 dark:text-zinc-400">
+          {/* EMAIL – mit Spotify-Marquee bei Hover */}
+          <div className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">
             {isEditingEmail ? (
               <div className="flex items-center gap-2">
                 <input
@@ -684,11 +730,10 @@ function ContactRow({
               </div>
             ) : (
               <div
-                className="hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text truncate"
+                className="hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text"
                 onClick={() => setIsEditingEmail(true)}
-                title="Click to edit email"
               >
-                {contact.email}
+                <HoverMarquee text={contact.email} />
               </div>
             )}
           </div>
@@ -730,7 +775,7 @@ function ContactRow({
   )
 }
 
-/* ================= KATEGORIE KOMPONENT ================= */
+/* ================= CATEGORY SECTION ================= */
 
 function CategorySection({
   category,
@@ -783,7 +828,6 @@ function CategorySection({
     setIsEditingCategory(false)
   }
 
-  // Reset temp value when category changes
   useEffect(() => {
     setTempCategoryName(category.name)
   }, [category.name])
@@ -799,10 +843,8 @@ function CategorySection({
         onDragContactToCategory(contactId, category.id)
       }}
     >
-      {/* CATEGORY HEADER */}
       <div className="px-4 py-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40">
         <div className="flex items-center gap-2 flex-1">
-          {/* AUSWAHL CHECKBOX (nur im Delete Mode) */}
           {isDeletingMode && (
             <input
               type="checkbox"
@@ -812,7 +854,6 @@ function CategorySection({
             />
           )}
 
-          {/* KATEGORIE NAME - bearbeitbar */}
           {isEditingCategory ? (
             <div className="flex items-center gap-2 flex-1">
               <input
@@ -846,13 +887,11 @@ function CategorySection({
         </div>
       </div>
 
-      {/* CONTACTS IN CATEGORY */}
       {filterContacts(
         contacts.filter(c => c.categoryId === category.id),
         search
       ).map(contact => (
         <div key={contact.id} className="relative">
-          {/* AUSWAHL CHECKBOX für Kontakte (nur im Delete Mode) */}
           {isDeletingMode && (
             <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
               <input
@@ -921,7 +960,6 @@ function ExpandingSearchBar({
           isExpanded ? "w-52" : "w-10"
         }`}
       >
-        {/* SUCH-ICON (ohne weißen Kreis) */}
         <button
           onClick={handleSearchClick}
           className={`w-10 h-10 flex items-center justify-center transition-colors flex-shrink-0 ${
@@ -941,7 +979,6 @@ function ExpandingSearchBar({
           </svg>
         </button>
 
-        {/* INPUT FIELD (max sichtbare länge; ellipsis damit nix ins X schreibt) */}
         <input
           ref={inputRef}
           type="text"
@@ -957,7 +994,6 @@ function ExpandingSearchBar({
         />
       </div>
 
-      {/* CLEAR BUTTON (nur wenn Text vorhanden und expanded) */}
       {search && isExpanded && (
         <button
           onClick={() => {
@@ -992,7 +1028,7 @@ function ManualDraftSource({
 }) {
   const topCardRef = useRef<HTMLDivElement>(null)
 
-  if (isDeletingMode) return null // Versteckt im Delete Mode
+  if (isDeletingMode) return null
 
   return (
     <div
@@ -1002,7 +1038,6 @@ function ManualDraftSource({
         setManualDrafts(prev => [...prev, draft])
         e.dataTransfer.setData("manualDraft", draft.id)
 
-        // nicer drag image (nur top card)
         if (topCardRef.current) {
           e.dataTransfer.setDragImage(topCardRef.current, 20, 20)
         }
@@ -1052,23 +1087,19 @@ export default function DashboardPage() {
   const [theme, setTheme] = useState<ThemeMode>("light")
   const [showSettingsModal, setShowSettingsModal] = useState(false)
 
-  // Import / Upload
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showUploadPreview, setShowUploadPreview] = useState(false)
   const [importPreview, setImportPreview] = useState<ImportedRow[]>([])
   const [importErrors, setImportErrors] = useState<string[]>([])
 
-  // Drag animation states
   const [justPlacedDraftId, setJustPlacedDraftId] = useState<string | null>(null)
   const [stackPulse, setStackPulse] = useState(false)
   const [isDraggingDraft, setIsDraggingDraft] = useState(false)
 
-  // ADD CONTACT
   const [showAddContact, setShowAddContact] = useState(false)
   const [newContactName, setNewContactName] = useState("")
   const [newContactEmail, setNewContactEmail] = useState("")
 
-  // ADD CATEGORY
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
 
@@ -1076,14 +1107,12 @@ export default function DashboardPage() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const dataMenuRef = useRef<HTMLDivElement>(null)
 
-  // global: close dropdowns on outside click
   useOnClickOutside([addMenuRef, userMenuRef, dataMenuRef], () => {
     setShowAddMenu(false)
     setShowUserMenu(false)
     setShowDataMenu(false)
   }, showAddMenu || showUserMenu || showDataMenu)
 
-  // load / persist theme
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("asl_theme")
@@ -1097,7 +1126,6 @@ export default function DashboardPage() {
     } catch {}
   }, [theme])
 
-  // Funktionen zum Schließen anderer Menüs
   const closeAllMenus = () => {
     setShowAddMenu(false)
     setShowUserMenu(false)
@@ -1108,7 +1136,6 @@ export default function DashboardPage() {
     closeAllMenus()
   }
 
-  // SCAN FUNCTION
   const handleScanMails = async () => {
     setScanning(true)
     closeAllMenus()
@@ -1123,7 +1150,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Funktion zum Aktualisieren von Mail-Notizen
   const updateMailNote = (contactId: string, mailId: string, note: string) => {
     setContacts(prev =>
       prev.map(contact => {
@@ -1140,22 +1166,18 @@ export default function DashboardPage() {
     )
   }
 
-  // Funktion zum Aktualisieren von Kontakt-Namen
   const updateContactName = (contactId: string, name: string) => {
     setContacts(prev => prev.map(contact => (contact.id === contactId ? { ...contact, name } : contact)))
   }
 
-  // Funktion zum Aktualisieren von Kontakt-Email
   const updateContactEmail = (contactId: string, email: string) => {
     setContacts(prev => prev.map(contact => (contact.id === contactId ? { ...contact, email } : contact)))
   }
 
-  // Funktion zum Aktualisieren von Kategorie-Namen
   const updateCategoryName = (categoryId: string, name: string) => {
     setCategories(prev => prev.map(category => (category.id === categoryId ? { ...category, name } : category)))
   }
 
-  // Funktion zum Löschen einer Mail
   const deleteMail = (contactId: string, mailId: string) => {
     if (confirm("Are you sure you want to delete this mail?")) {
       setContacts(prev =>
@@ -1169,7 +1191,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Funktion zum Hinzufügen eines Kontakts
   const handleAddContact = () => {
     if (!newContactName.trim() || !newContactEmail.trim()) return
     const email = sanitizeEmail(newContactEmail)
@@ -1192,7 +1213,6 @@ export default function DashboardPage() {
     setShowAddContact(false)
   }
 
-  // Funktion zum Hinzufügen einer Kategorie
   const handleAddCategory = () => {
     if (!newCategoryName.trim()) return
 
@@ -1202,24 +1222,20 @@ export default function DashboardPage() {
     setShowAddCategory(false)
   }
 
-  // Funktion zum Löschen eines Kontakts
   const handleDeleteContact = (contactId: string) => {
     if (confirm("Are you sure you want to delete this contact?")) {
       setContacts(prev => prev.filter(c => c.id !== contactId))
     }
   }
 
-  // Drag & Drop Handler für Kategorien
   const handleDragContactToCategory = (contactId: string, categoryId: string) => {
     setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, categoryId } : c)))
   }
 
-  // Drag & Drop Handler für Uncategorized
   const handleDragContactToUncategorized = (contactId: string) => {
     setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, categoryId: null } : c)))
   }
 
-  // NEU: Mail innerhalb eines Kontakts umsortieren
   const handleReorderMail = (contactId: string, mailId: string, newIndex: number) => {
     setContacts(prev =>
       prev.map(c => {
@@ -1236,17 +1252,23 @@ export default function DashboardPage() {
     )
   }
 
-  // Auswahl-Logik für Delete Mode
   const toggleItemSelection = (itemId: string) => {
     setSelectedItems(prev => (prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]))
   }
 
-  // Alle ausgewählten Items löschen (nur EINE Bestätigung)
-  const handleDeleteSelected = () => {
-    if (selectedItems.length === 0) return
+  // Alle möglichen IDs (Categories + Contacts) → für Select All / Delete All
+  const allSelectableIds = useMemo(() => {
+    const ids: string[] = []
+    categories.forEach(c => ids.push(`category_${c.id}`))
+    contacts.forEach(c => ids.push(`contact_${c.id}`))
+    return ids
+  }, [categories, contacts])
 
-    const contactIds = selectedItems.filter(id => id.startsWith("contact_"))
-    const categoryIds = selectedItems.filter(id => id.startsWith("category_"))
+  const deleteItems = (itemsToDelete: string[]) => {
+    if (itemsToDelete.length === 0) return
+
+    const contactIds = itemsToDelete.filter(id => id.startsWith("contact_"))
+    const categoryIds = itemsToDelete.filter(id => id.startsWith("category_"))
 
     let message = ""
     if (contactIds.length > 0 && categoryIds.length > 0) {
@@ -1256,6 +1278,8 @@ export default function DashboardPage() {
     } else if (categoryIds.length > 0) {
       message = `Delete ${categoryIds.length} selected category(ies)? Contacts will be moved to Uncategorized.`
     }
+
+    if (!message) return
 
     if (confirm(message)) {
       if (contactIds.length > 0) {
@@ -1271,10 +1295,15 @@ export default function DashboardPage() {
       }
 
       setSelectedItems([])
+      setIsDeletingMode(false)
     }
   }
 
-  // CSV EXPORT
+  const handleDeleteSelected = () => deleteItems(selectedItems)
+  const handleSelectAll = () => setSelectedItems(allSelectableIds)
+  const handleClearSelection = () => setSelectedItems([])
+  const handleDeleteAll = () => deleteItems(allSelectableIds)
+
   const handleCsvExport = () => {
     const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
     const lines = [
@@ -1282,13 +1311,13 @@ export default function DashboardPage() {
       ...contacts.map(c => {
         const cat = c.categoryId ? categoryNameById.get(c.categoryId) ?? "" : ""
         const safe = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`
+
         return [safe(c.name), safe(c.email), safe(cat)].join(",")
       })
     ]
     downloadTextFile("contacts_export.csv", lines.join("\n"))
   }
 
-  // FILE UPLOAD (CSV/TSV)
   const handleFilePick = () => {
     closeAllMenus()
     fileInputRef.current?.click()
@@ -1337,7 +1366,6 @@ export default function DashboardPage() {
     setImportErrors([])
   }
 
-  // Manual Draft animation signals
   const handleManualDraftPlaced = (draftId: string) => {
     setJustPlacedDraftId(draftId)
     setStackPulse(true)
@@ -1350,7 +1378,6 @@ export default function DashboardPage() {
     window.setTimeout(() => setIsDraggingDraft(false), 900)
   }
 
-  // USER MENU FUNKTIONEN
   const handleSettings = () => {
     setShowSettingsModal(true)
     setShowUserMenu(false)
@@ -1397,10 +1424,10 @@ export default function DashboardPage() {
         "bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50"
       ].join(" ")}
       style={{
-        fontFamily: '"Azeret Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+        fontFamily:
+          '"Azeret Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
       }}
     >
-      {/* small global CSS for animations */}
       <style jsx global>{`
         @keyframes wobble {
           0% { transform: rotate(0deg); }
@@ -1425,6 +1452,16 @@ export default function DashboardPage() {
           100% { transform: translateY(0); }
         }
         .animate-stackPush { animation: stackPush 0.25s ease-out; }
+
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .marquee-container { max-width: 100%; }
+        .marquee-inner { will-change: transform; }
+        .marquee-container:hover .marquee-inner.marquee-active {
+          animation: marquee 7s linear infinite;
+        }
       `}</style>
 
       {/* HEADER */}
@@ -1436,7 +1473,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <ExpandingSearchBar search={search} setSearch={setSearch} onFocus={handleSearchFocus} />
 
-          {/* Import/Export Dropdown */}
+          {/* DATA MENU */}
           <div className="relative" ref={dataMenuRef}>
             <button
               onClick={() => {
@@ -1499,13 +1536,12 @@ export default function DashboardPage() {
                 const file = e.target.files?.[0]
                 if (!file) return
                 void handleFileSelected(file)
-                // reset so same file can be re-selected
                 e.currentTarget.value = ""
               }}
             />
           </div>
 
-          {/* ADD BUTTON */}
+          {/* ADD MENU */}
           <div className="relative" ref={addMenuRef}>
             <button
               onClick={() => {
@@ -1525,7 +1561,6 @@ export default function DashboardPage() {
               </svg>
             </button>
 
-            {/* ADD MENÜ */}
             {showAddMenu && !isDeletingMode && (
               <div className="absolute right-0 top-full mt-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-50 min-w-52 overflow-hidden">
                 <button
@@ -1559,39 +1594,66 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* TRASH BUTTON */}
-          <button
-            onClick={() => {
-              if (isDeletingMode && selectedItems.length > 0) {
-                handleDeleteSelected()
-              } else {
-                setIsDeletingMode(!isDeletingMode)
-                if (!isDeletingMode) setSelectedItems([])
+          {/* TRASH BUTTON + SELECT/DELETE ALL CONTROLS */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (isDeletingMode && selectedItems.length > 0) {
+                  handleDeleteSelected()
+                } else {
+                  setIsDeletingMode(!isDeletingMode)
+                  if (!isDeletingMode) setSelectedItems([])
+                }
+                closeAllMenus()
+              }}
+              className={`w-10 h-10 rounded-md flex items-center justify-center transition-all duration-200 ${
+                isDeletingMode
+                  ? "bg-red-500 text-white shadow-sm"
+                  : "text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
+              }`}
+              title={
+                isDeletingMode
+                  ? selectedItems.length > 0
+                    ? `Delete ${selectedItems.length} selected items`
+                    : "Exit delete mode"
+                  : "Enter delete mode"
               }
-              closeAllMenus()
-            }}
-            className={`w-10 h-10 rounded-md flex items-center justify-center transition-all duration-200 ${
-              isDeletingMode ? "bg-red-500 text-white shadow-sm" : "text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
-            }`}
-            title={
-              isDeletingMode
-                ? selectedItems.length > 0
-                  ? `Delete ${selectedItems.length} selected items`
-                  : "Exit delete mode"
-                : "Enter delete mode"
-            }
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
 
-          {/* USER MENU BUTTON */}
+            {isDeletingMode && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSelectAll}
+                  className="px-2 py-1 text-xs rounded border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
+                >
+                  Select all
+                </button>
+                <button
+                  onClick={handleClearSelection}
+                  className="px-2 py-1 text-xs rounded border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
+                >
+                  Delete all
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* USER MENU */}
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => {
@@ -1611,7 +1673,6 @@ export default function DashboardPage() {
               </svg>
             </button>
 
-            {/* USER MENÜ */}
             {showUserMenu && !isDeletingMode && (
               <div className="absolute right-0 top-full mt-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-50 min-w-56 overflow-hidden">
                 <button
@@ -1662,7 +1723,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* SCAN BUTTON (monochrome, no emoji) */}
+          {/* SCAN BUTTON */}
           <button
             onClick={handleScanMails}
             disabled={scanning}
@@ -1691,7 +1752,6 @@ export default function DashboardPage() {
       {/* CONTENT */}
       <main className="flex-1 overflow-auto">
         <div className="min-w-[900px] px-4 py-4 space-y-8">
-          {/* CATEGORIES */}
           {categories.map(category => (
             <CategorySection
               key={category.id}
@@ -1717,7 +1777,6 @@ export default function DashboardPage() {
             />
           ))}
 
-          {/* UNCATEGORIZED */}
           {hasUncategorizedContacts && (
             <div
               className="border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden"
@@ -1766,32 +1825,53 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ADD CONTACT MODAL */}
+          {/* ADD CONTACT MODAL – ENTER bestätigt, ESC schließt */}
           {showAddContact && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => closeAllMenus()}>
-              <div className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-96 border border-zinc-200 dark:border-zinc-800" onMouseDown={e => e.stopPropagation()}>
+            <div
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+              onMouseDown={() => closeAllMenus()}
+            >
+              <div
+                className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-96 border border-zinc-200 dark:border-zinc-800"
+                onMouseDown={e => e.stopPropagation()}
+              >
                 <h3 className="font-semibold mb-4">Add New Contact</h3>
                 <input
                   type="text"
                   placeholder="Name"
                   value={newContactName}
                   onChange={e => setNewContactName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleAddContact()
+                    if (e.key === "Escape") setShowAddContact(false)
+                  }}
                   className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 mb-3 bg-transparent"
                   onFocus={closeAllMenus}
+                  autoFocus
                 />
                 <input
                   type="email"
                   placeholder="Email"
                   value={newContactEmail}
                   onChange={e => setNewContactEmail(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleAddContact()
+                    if (e.key === "Escape") setShowAddContact(false)
+                  }}
                   className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 mb-4 bg-transparent"
                   onFocus={closeAllMenus}
                 />
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowAddContact(false)} className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
+                  <button
+                    onClick={() => setShowAddContact(false)}
+                    className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
+                  >
                     Cancel
                   </button>
-                  <button onClick={handleAddContact} className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black">
+                  <button
+                    onClick={handleAddContact}
+                    className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black"
+                  >
                     Add
                   </button>
                 </div>
@@ -1799,24 +1879,41 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ADD CATEGORY MODAL */}
+          {/* ADD CATEGORY MODAL – ENTER bestätigt, ESC schließt */}
           {showAddCategory && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => closeAllMenus()}>
-              <div className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-96 border border-zinc-200 dark:border-zinc-800" onMouseDown={e => e.stopPropagation()}>
+            <div
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+              onMouseDown={() => closeAllMenus()}
+            >
+              <div
+                className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-96 border border-zinc-200 dark:border-zinc-800"
+                onMouseDown={e => e.stopPropagation()}
+              >
                 <h3 className="font-semibold mb-4">Add New Category</h3>
                 <input
                   type="text"
                   placeholder="Category name"
                   value={newCategoryName}
                   onChange={e => setNewCategoryName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleAddCategory()
+                    if (e.key === "Escape") setShowAddCategory(false)
+                  }}
                   className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 mb-4 bg-transparent"
                   onFocus={closeAllMenus}
+                  autoFocus
                 />
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowAddCategory(false)} className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
+                  <button
+                    onClick={() => setShowAddCategory(false)}
+                    className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
+                  >
                     Cancel
                   </button>
-                  <button onClick={handleAddCategory} className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black">
+                  <button
+                    onClick={handleAddCategory}
+                    className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black"
+                  >
                     Add
                   </button>
                 </div>
@@ -1828,7 +1925,10 @@ export default function DashboardPage() {
 
       {/* SETTINGS MODAL */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => setShowSettingsModal(false)}>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onMouseDown={() => setShowSettingsModal(false)}
+        >
           <div
             className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[420px] border border-zinc-200 dark:border-zinc-800"
             onMouseDown={e => e.stopPropagation()}
@@ -1890,8 +1990,14 @@ export default function DashboardPage() {
 
       {/* UPLOAD PREVIEW MODAL */}
       {showUploadPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => setShowUploadPreview(false)}>
-          <div className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[640px] border border-zinc-200 dark:border-zinc-800" onMouseDown={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onMouseDown={() => setShowUploadPreview(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[640px] border border-zinc-200 dark:border-zinc-800"
+            onMouseDown={e => e.stopPropagation()}
+          >
             <h3 className="font-semibold mb-2">File Upload Preview</h3>
             <div className="text-xs text-zinc-500 mb-4">
               Expected: column A = Name, column B = Email (Google Sheets export works).
@@ -1899,7 +2005,9 @@ export default function DashboardPage() {
 
             {importErrors.length > 0 && (
               <div className="mb-3 rounded border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3">
-                <div className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">Some rows have issues:</div>
+                <div className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">
+                  Some rows have issues:
+                </div>
                 <ul className="text-xs text-red-700 dark:text-red-300 list-disc ml-5">
                   {importErrors.map((e, idx) => (
                     <li key={idx}>{e}</li>
