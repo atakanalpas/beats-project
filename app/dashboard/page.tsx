@@ -327,7 +327,7 @@ function HoverMarquee({ text }: { text: string }) {
   return (
     <div
       ref={containerRef}
-      className="marquee-container overflow-hidden whitespace-nowrap"
+      className="marquee-container relative w-full overflow-hidden whitespace-nowrap"
       title={text}
     >
       <div
@@ -670,7 +670,7 @@ function ContactRow({
 
         <div className={`w-1 ${getStatusColor(lastSent, priorityAfterDays)}`} />
 
-        <div className="px-4 py-2 flex-1">
+        <div className="px-4 py-2 flex-1 overflow-hidden">
           {/* NAME */}
           <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
             {isEditingName ? (
@@ -696,7 +696,7 @@ function ContactRow({
               </div>
             ) : (
               <div
-                className="hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text"
+                className="hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text truncate"
                 onClick={() => setIsEditingName(true)}
                 title="Click to edit name"
               >
@@ -705,7 +705,7 @@ function ContactRow({
             )}
           </div>
 
-          {/* EMAIL – mit Spotify-Marquee bei Hover */}
+          {/* EMAIL – mit Spotify-Marquee bei Hover, hart begrenzt + overflow hidden */}
           <div className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">
             {isEditingEmail ? (
               <div className="flex items-center gap-2">
@@ -730,8 +730,9 @@ function ContactRow({
               </div>
             ) : (
               <div
-                className="hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text"
+                className="hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text max-w-full overflow-hidden"
                 onClick={() => setIsEditingEmail(true)}
+                title={contact.email}
               >
                 <HoverMarquee text={contact.email} />
               </div>
@@ -1256,7 +1257,6 @@ export default function DashboardPage() {
     setSelectedItems(prev => (prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]))
   }
 
-  // Alle möglichen IDs (Categories + Contacts) → für Select All / Delete All
   const allSelectableIds = useMemo(() => {
     const ids: string[] = []
     categories.forEach(c => ids.push(`category_${c.id}`))
