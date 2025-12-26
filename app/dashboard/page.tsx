@@ -3,6 +3,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 
 /* ================= TYPES ================= */
+type Category = {
+  id: string
+  name: string
+}
 
 type Attachment = {
   id: string
