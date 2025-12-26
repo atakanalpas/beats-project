@@ -787,6 +787,7 @@ function CategorySection({
   onUpdateCategoryName,
   contacts,
   search,
+  sortMode,
   priorityAfterDays,
   manualDrafts,
   setManualDrafts,
@@ -807,6 +808,7 @@ function CategorySection({
   onUpdateCategoryName: (categoryId: string, name: string) => void
   contacts: Contact[]
   search: string
+  sortMode: "custom" | "az" | "priority"
   priorityAfterDays: number
   manualDrafts: ManualDraft[]
   setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
@@ -823,6 +825,10 @@ function CategorySection({
   const [isEditingCategory, setIsEditingCategory] = useState(false)
   const [tempCategoryName, setTempCategoryName] = useState(category.name)
 
+  useEffect(() => {
+    setTempCategoryName(category.name)
+  }, [category.name])
+
   const handleCategorySave = () => {
     if (tempCategoryName.trim() && tempCategoryName !== category.name) {
       onUpdateCategoryName(category.id, tempCategoryName.trim())
@@ -830,9 +836,32 @@ function CategorySection({
     setIsEditingCategory(false)
   }
 
-  useEffect(() => {
-    setTempCategoryName(category.name)
-  }, [category.name])
+  // 🔹 SORTIERTE KONTAKTE (NEU, aber minimal)
+  const sortedContacts = useMemo(() => {
+    let list = filterContacts(
+      contacts.filter(c => c.categoryId === category.id),
+      search
+    )
+
+    if (sortMode === "az") {
+      return [...list].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+    }
+
+    if (sortMode === "priority") {
+      return [...list].sort((a, b) => {
+        const da =
+          daysSince(a.sentMails.at(-1)?.sentAt) ?? Infinity
+        const db =
+          daysSince(b.sentMails.at(-1)?.sentAt) ?? Infinity
+        return db - da
+      })
+    }
+
+    // custom → nichts verändern
+    return list
+  }, [contacts, search, sortMode, category.id])
 
   return (
     <div
@@ -889,10 +918,7 @@ function CategorySection({
         </div>
       </div>
 
-      {filterContacts(
-        contacts.filter(c => c.categoryId === category.id),
-        search
-      ).map(contact => (
+      {sortedContacts.map(contact => (
         <div key={contact.id} className="relative">
           {isDeletingMode && (
             <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
@@ -925,6 +951,7 @@ function CategorySection({
     </div>
   )
 }
+
 
 /* ================= EXPANDING SEARCH BAR ================= */
 
@@ -1805,6 +1832,7 @@ export default function DashboardPage() {
         onUpdateCategoryName={updateCategoryName}
         contacts={contacts}
         search={search}
+        sortMode={sortMode}
         priorityAfterDays={priorityAfterDays}
         manualDrafts={manualDrafts}
         setManualDrafts={setManualDrafts}
