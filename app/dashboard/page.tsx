@@ -462,7 +462,9 @@ function ManualDraftCard({
     >
       {isDeleting && (
         <button
-          onClick={() => setManualDrafts(prev => prev.filter(d => d.id !== draft.id))}
+          onClick={() =>
+            setManualDrafts(prev => prev.filter(d => d.id !== draft.id))
+          }
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
           title="Delete manual card"
         >
@@ -471,38 +473,38 @@ function ManualDraftCard({
       )}
 
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[10px] text-zinc-500 mb-1">{formatDate(draft.sentAt)}</div>
+        <div className="text-[10px] text-zinc-500 mb-1">
+          {formatDate(draft.sentAt)}
+        </div>
 
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
           className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-          title="Add note"
+          title="Expand note"
         >
           <NoteIcon className="w-4 h-4" />
         </button>
       </div>
 
-      {open ? (
-        <textarea
-          placeholder="Add note…"
-          value={draft.note ?? ""}
-          onChange={e =>
-            setManualDrafts(prev =>
-              prev.map(d => (d.id === draft.id ? { ...d, note: e.target.value } : d))
+      {/* MAIN NOTE – immer editierbar */}
+      <textarea
+        placeholder="No note"
+        value={draft.note ?? ""}
+        onChange={e =>
+          setManualDrafts(prev =>
+            prev.map(d =>
+              d.id === draft.id ? { ...d, note: e.target.value } : d
             )
-          }
-          className="w-full resize-none border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 text-[11px] bg-transparent text-zinc-900 dark:text-zinc-100 focus:outline-none"
-          rows={3}
-        />
-      ) : (
-        <div className="text-[10px] text-zinc-600 dark:text-zinc-400 italic truncate">
-          {draft.note ? draft.note : "No note"}
-        </div>
-      )}
+          )
+        }
+        rows={open ? 4 : 2}
+        className="w-full resize-none border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 text-[11px] bg-transparent text-zinc-900 dark:text-zinc-100 focus:outline-none"
+      />
     </div>
   )
 }
+
 
 function ContactRow({
   contact,
