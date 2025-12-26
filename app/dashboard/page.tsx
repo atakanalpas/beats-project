@@ -1338,18 +1338,66 @@ export default function DashboardPage() {
   const handleDeleteAll = () => deleteItems(allSelectableIds)
 
   const handleCsvExport = () => {
-    const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
-    const lines = [
-      ["name", "email", "category"].join(","),
-      ...contacts.map(c => {
-        const cat = c.categoryId ? categoryNameById.get(c.categoryId) ?? "" : ""
-        const safe = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`
+  const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
 
-        return [safe(c.name), safe(c.email), safe(cat)].join(",")
-      })
-    ]
-    downloadTextFile("contacts_export.csv", lines.join("\n"))
-  }
+  const safe = (v: string) =>
+    `"${String(v ?? "").replace(/"/g, '""')}"`
+
+  const lines = [
+    ["name", "email", "category", "notes", "entries"].join(","),
+
+    ...contacts.map(contact => {
+      const category = contact.categoryId
+        ? categoryNameById.get(contact.categoryId) ?? ""
+        : ""
+
+      // 🔹 Notes aus gescannten Mails
+      const scannedNotes =
+        contact.sentMails
+          ?.map(m => m.note)
+          .filter(Boolean) ?? []
+
+      // 🔹 Notes aus manuellen Drafts (die diesem Kontakt zugeordnet sind)
+      const manualNotes =
+        manualDrafts
+          ?.filter(d => d.contactId === contact.id)
+          .map(d => d.note)
+          .filter(Boolean) ?? []
+
+      const allNotes = [...scannedNotes, ...manualNotes].join(" | ")
+
+      // 🔹 Entries / Kästchen (Text-Zusammenfassung)
+      const scannedEntries =
+  contact.sentMails?.map(m => {
+    const date = m.sentAt ? formatDate(m.sentAt) : ""
+    const note = m.note ? m.note : "Sent mail"
+    return date ? `${date}: ${note}` : note
+  }) ?? []
+
+
+      const manualEntries =
+        manualDrafts
+          ?.filter(d => d.contactId === contact.id)
+          .map(d => {
+            const date = d.sentAt ? formatDate(d.sentAt) : ""
+            return `${date}: Manual`
+          }) ?? []
+
+      const allEntries = [...scannedEntries, ...manualEntries].join(" | ")
+
+      return [
+        safe(contact.name),
+        safe(contact.email),
+        safe(category),
+        safe(allNotes),
+        safe(allEntries)
+      ].join(",")
+    })
+  ]
+
+  downloadTextFile("contacts_export.csv", lines.join("\n"))
+}
+
 
   const handleFilePick = () => {
     closeAllMenus()
