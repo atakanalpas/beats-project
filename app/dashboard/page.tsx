@@ -1394,8 +1394,8 @@ export default function DashboardPage() {
       ].join(",")
     })
   ]
-
-  downloadTextFile("contacts_export.csv", lines.join("\n"))
+  const today = new Date().toISOString().split("T")[0]
+  downloadTextFile(`SentLogs_Export_${today}.csv`, lines.join("\n"))
 }
 
 
