@@ -86,6 +86,27 @@ const MOCK_CONTACTS: Contact[] = [
 
 /* ================= HELPERS ================= */
 
+function newestSentAtIso(contact: Contact) {
+  let maxMs: number | undefined
+  let bestIso: string | undefined
+
+  for (const m of contact.sentMails ?? []) {
+    if (!m?.sentAt) continue
+    const ms = safeDateMs(m.sentAt)
+    if (ms === undefined) continue
+    if (maxMs === undefined || ms > maxMs) {
+      maxMs = ms
+      bestIso = m.sentAt
+    }
+  }
+
+  return bestIso
+}
+
+function firstLetterKey(name: string) {
+  return (name.trim()[0] ?? "").toLocaleLowerCase()
+}
+
 const generateId = () => {
   return "id-" + Math.random().toString(36).substr(2, 9)
 }
@@ -196,6 +217,7 @@ function downloadTextFile(filename: string, content: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
 
 /** Farbschema einer Mail-Karte auf Basis von Gmail-Status / Labels */
 function getMailStatusTheme(mail: SentMail) {
@@ -801,7 +823,9 @@ function CategorySection({
   onDragContactToCategory,
   onManualDraftPlaced,
   justPlacedDraftId,
-  onReorderMail
+  onReorderMail,
+  onReorderContact,
+
 }: {
   category: Category
   isDeletingMode: boolean
@@ -823,9 +847,13 @@ function CategorySection({
   onManualDraftPlaced: (draftId: string) => void
   justPlacedDraftId?: string | null
   onReorderMail: (contactId: string, mailId: string, newIndex: number) => void
+  onReorderContact: (contactId: string, categoryId: string, newIndex: number) => void
+
+  
 }) {
   const [isEditingCategory, setIsEditingCategory] = useState(false)
   const [tempCategoryName, setTempCategoryName] = useState(category.name)
+  
 
   useEffect(() => {
     setTempCategoryName(category.name)
@@ -838,32 +866,86 @@ function CategorySection({
     setIsEditingCategory(false)
   }
 
+const [activeContactInsertIndex, setActiveContactInsertIndex] = useState<number | null>(null)
+
+const handleDropContactAt = (index: number, e: React.DragEvent<HTMLDivElement>) => {
+  e.preventDefault()
+  e.stopPropagation() // <- WICHTIG
+  setActiveContactInsertIndex(null)
+
+  const contactId = e.dataTransfer.getData("contact")
+  if (!contactId) return
+
+  onReorderContact(contactId, category.id, index)
+}
+
+const handleDragOverContactZone = (index: number, e: React.DragEvent<HTMLDivElement>) => {
+  if (sortMode !== "custom") return
+  const contactId = e.dataTransfer.getData("contact")
+  if (!contactId) return
+  e.preventDefault()
+  if (activeContactInsertIndex !== index) setActiveContactInsertIndex(index)
+}
+
+const clearActiveContactInsert = () => setActiveContactInsertIndex(null)
+
+const renderContactDropZone = (index: number) => (
+  <div
+    key={`cdz-${category.id}-${index}`}
+    onDragOver={e => handleDragOverContactZone(index, e)}
+    onDrop={e => handleDropContactAt(index, e)}
+    onDragLeave={clearActiveContactInsert}
+    className={`h-2 transition-colors ${
+      activeContactInsertIndex === index ? "bg-blue-500/60" : "bg-transparent"
+    }`}
+  />
+)
+
   // 🔹 SORTIERTE KONTAKTE (NEU, aber minimal)
   const sortedContacts = useMemo(() => {
-    let list = filterContacts(
-      contacts.filter(c => c.categoryId === category.id),
-      search
-    )
+  let list = filterContacts(
+    contacts.filter(c => c.categoryId === category.id),
+    search
+  );
 
-    if (sortMode === "az") {
-      return [...list].sort((a, b) =>
-        a.name.localeCompare(b.name)
-      )
-    }
+  const withIndex = list.map((c, idx) => ({ c, idx }));
 
-    if (sortMode === "priority") {
-      return [...list].sort((a, b) => {
-        const da =
-          daysSince(a.sentMails.at(-1)?.sentAt) ?? Infinity
-        const db =
-          daysSince(b.sentMails.at(-1)?.sentAt) ?? Infinity
-        return db - da
+  if (sortMode === "az") {
+    return withIndex
+      .sort((a, b) => {
+        const la = firstLetterKey(a.c.name);
+        const lb = firstLetterKey(b.c.name);
+        if (la < lb) return -1;
+        if (la > lb) return 1;
+        return a.idx - b.idx; // nur erster Buchstabe, Rest bleibt stabil
       })
-    }
+      .map(x => x.c);
+  }
 
-    // custom → nichts verändern
-    return list
-  }, [contacts, search, sortMode, category.id])
+  if (sortMode === "priority") {
+    return withIndex
+      .sort((a, b) => {
+        const da = daysSince(newestSentAtIso(a.c)) ?? -1;
+        const db = daysSince(newestSentAtIso(b.c)) ?? -1;
+
+        const ra = da >= priorityAfterDays ? 1 : 0; // rot?
+        const rb = db >= priorityAfterDays ? 1 : 0;
+
+        // 1) rote nach oben, 2) dann älteste zuerst
+        return (rb - ra) || (db - da) || (a.idx - b.idx);
+      })
+      .map(x => x.c);
+  }
+
+  // custom: nach position innerhalb der Kategorie
+  return withIndex
+    .sort((a, b) => {
+      const pa = a.c.position ?? Number.POSITIVE_INFINITY;
+      const pb = b.c.position ?? Number.POSITIVE_INFINITY;
+      return pa - pb || a.idx - b.idx;
+    })
+    .map(x => x.c);
+}, [contacts, search, sortMode, category.id, priorityAfterDays]);
 
   return (
     <div
@@ -920,36 +1002,43 @@ function CategorySection({
         </div>
       </div>
 
-      {sortedContacts.map(contact => (
-        <div key={contact.id} className="relative">
-          {isDeletingMode && (
-            <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
-              <input
-                type="checkbox"
-                checked={selectedItems.includes(`contact_${contact.id}`)}
-                onChange={() => onToggleSelection(`contact_${contact.id}`)}
-                className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
-              />
-            </div>
-          )}
+      {sortMode === "custom" && !isDeletingMode && renderContactDropZone(0)}
 
-          <ContactRow
-            contact={contact}
-            priorityAfterDays={priorityAfterDays}
-            manualDrafts={manualDrafts}
-            setManualDrafts={setManualDrafts}
-            onUpdateMailNote={onUpdateMailNote}
-            onUpdateContactName={onUpdateContactName}
-            onUpdateContactEmail={onUpdateContactEmail}
-            onDeleteContact={isDeletingMode ? onDeleteContact : undefined}
-            onDeleteMail={isDeletingMode ? onDeleteMail : undefined}
-            isDeleting={isDeletingMode}
-            onManualDraftPlaced={onManualDraftPlaced}
-            justPlacedDraftId={justPlacedDraftId}
-            onReorderMail={onReorderMail}
+{sortedContacts.map((contact, index) => (
+  <React.Fragment key={contact.id}>
+    <div className="relative">
+      {isDeletingMode && (
+        <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
+          <input
+            type="checkbox"
+            checked={selectedItems.includes(`contact_${contact.id}`)}
+            onChange={() => onToggleSelection(`contact_${contact.id}`)}
+            className="h-4 w-4 rounded text-red-500 focus:ring-red-500"
           />
         </div>
-      ))}
+      )}
+
+      <ContactRow
+        contact={contact}
+        priorityAfterDays={priorityAfterDays}
+        manualDrafts={manualDrafts}
+        setManualDrafts={setManualDrafts}
+        onUpdateMailNote={onUpdateMailNote}
+        onUpdateContactName={onUpdateContactName}
+        onUpdateContactEmail={onUpdateContactEmail}
+        onDeleteContact={isDeletingMode ? onDeleteContact : undefined}
+        onDeleteMail={isDeletingMode ? onDeleteMail : undefined}
+        isDeleting={isDeletingMode}
+        onManualDraftPlaced={onManualDraftPlaced}
+        justPlacedDraftId={justPlacedDraftId}
+        onReorderMail={onReorderMail}
+      />
+    </div>
+
+    {sortMode === "custom" && !isDeletingMode && renderContactDropZone(index + 1)}
+  </React.Fragment>
+))}
+
     </div>
   )
 }
@@ -1107,7 +1196,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("")
   const [priorityAfterDays, setPriorityAfterDays] = useState(30)
   const [scanning, setScanning] = useState(false)
-  const [sortMode, setSortMode] = useState<SortMode>("custom")
+  const [sortMode, setSortMode] = useState<SortMode>("az")
   const [showSortMenu, setShowSortMenu] = useState(false)
 
 
@@ -1140,12 +1229,17 @@ export default function DashboardPage() {
   const addMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const dataMenuRef = useRef<HTMLDivElement>(null)
+  const sortMenuRef = useRef<HTMLDivElement>(null)
+  const sortLabel =
+  sortMode === "az" ? "A–Z" : sortMode === "custom" ? "Custom" : "Priority"
 
-  useOnClickOutside([addMenuRef, userMenuRef, dataMenuRef], () => {
-    setShowAddMenu(false)
-    setShowUserMenu(false)
-    setShowDataMenu(false)
-  }, showAddMenu || showUserMenu || showDataMenu)
+
+  useOnClickOutside([addMenuRef, userMenuRef, dataMenuRef, sortMenuRef], () => {
+  setShowAddMenu(false)
+  setShowUserMenu(false)
+  setShowDataMenu(false)
+  setShowSortMenu(false)
+}, showAddMenu || showUserMenu || showDataMenu || showSortMenu)
 
   useEffect(() => {
     try {
@@ -1161,10 +1255,12 @@ export default function DashboardPage() {
   }, [theme])
 
   const closeAllMenus = () => {
-    setShowAddMenu(false)
-    setShowUserMenu(false)
-    setShowDataMenu(false)
-  }
+  setShowAddMenu(false)
+  setShowUserMenu(false)
+  setShowDataMenu(false)
+  setShowSortMenu(false)
+}
+
 
   const handleSearchFocus = () => {
     closeAllMenus()
@@ -1263,12 +1359,20 @@ export default function DashboardPage() {
   }
 
   const handleDragContactToCategory = (contactId: string, categoryId: string) => {
-    setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, categoryId } : c)))
-  }
+  setContacts(prev => {
+    const maxPos = Math.max(-1, ...prev.filter(c => c.categoryId === categoryId).map(c => c.position ?? -1)) + 1
+    return prev.map(c => (c.id === contactId ? { ...c, categoryId, position: maxPos } : c))
+  })
+}
 
   const handleDragContactToUncategorized = (contactId: string) => {
-    setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, categoryId: null } : c)))
-  }
+  setContacts(prev => {
+    const maxPos =
+      Math.max(-1, ...prev.filter(c => (c.categoryId ?? null) === null).map(c => c.position ?? -1)) + 1
+
+    return prev.map(c => (c.id === contactId ? { ...c, categoryId: null, position: maxPos } : c))
+  })
+}
 
   const handleReorderMail = (contactId: string, mailId: string, newIndex: number) => {
     setContacts(prev =>
@@ -1285,6 +1389,44 @@ export default function DashboardPage() {
       })
     )
   }
+  const handleReorderContact = (contactId: string, categoryId: string, newIndex: number) => {
+  setContacts(prev => {
+    const moving = prev.find(c => c.id === contactId)
+    if (!moving) return prev
+
+    const fromCat = moving.categoryId ?? null
+    const toCat = categoryId ?? null
+
+    const listInCat = (cat: string | null) =>
+      prev
+        .filter(c => (c.categoryId ?? null) === cat && c.id !== contactId)
+        .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
+
+    const fromList = listInCat(fromCat)
+    const toListBase = fromCat === toCat ? fromList : listInCat(toCat)
+
+    const clamped = Math.max(0, Math.min(newIndex, toListBase.length))
+    const toList = [...toListBase]
+    toList.splice(clamped, 0, { ...moving, categoryId: toCat })
+
+    const toPos = new Map<string, number>()
+    toList.forEach((c, idx) => toPos.set(c.id, idx))
+
+    const fromPos = new Map<string, number>()
+    if (fromCat !== toCat) fromList.forEach((c, idx) => fromPos.set(c.id, idx))
+
+    return prev.map(c => {
+      const cid = c.categoryId ?? null
+
+      if (c.id === contactId) return { ...c, categoryId: toCat, position: toPos.get(c.id) ?? 0 }
+      if (cid === toCat && toPos.has(c.id)) return { ...c, position: toPos.get(c.id)! }
+      if (fromCat !== toCat && cid === fromCat && fromPos.has(c.id)) return { ...c, position: fromPos.get(c.id)! }
+
+      return c
+    })
+  })
+}
+
 
   const toggleItemSelection = (itemId: string) => {
     setSelectedItems(prev => (prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]))
@@ -1857,46 +1999,55 @@ export default function DashboardPage() {
           </button>
         </div>
       ) : (
-        <div className="relative">
-          <button
-            onClick={() => setShowSortMenu(v => !v)}
-            className="px-2 py-1 text-xs border rounded"
-          >
-            Sort
-          </button>
+        <div className="relative" ref={sortMenuRef}>
+  <button
+    onClick={() => setShowSortMenu(v => !v)}
+    className="px-2 py-1 text-xs border rounded"
+  >
+    {sortLabel}
+  </button>
 
-          {showSortMenu && (
-            <div className="absolute mt-1 bg-white dark:bg-zinc-950 border rounded shadow z-20">
-              <button
-                onClick={() => {
-                  setSortMode("custom")
-                  setShowSortMenu(false)
-                }}
-                className="block px-3 py-2 text-xs w-full text-left"
-              >
-                Custom
-              </button>
-              <button
-                onClick={() => {
-                  setSortMode("az")
-                  setShowSortMenu(false)
-                }}
-                className="block px-3 py-2 text-xs w-full text-left"
-              >
-                A–Z
-              </button>
-              <button
-                onClick={() => {
-                  setSortMode("priority")
-                  setShowSortMenu(false)
-                }}
-                className="block px-3 py-2 text-xs w-full text-left"
-              >
-                Priority
-              </button>
-            </div>
-          )}
-        </div>
+  {showSortMenu && (
+    <div className="absolute mt-1 bg-white dark:bg-zinc-950 border rounded shadow z-20">
+      {sortMode !== "az" && (
+        <button
+          onClick={() => {
+            setSortMode("az")
+            setShowSortMenu(false)
+          }}
+          className="block px-3 py-2 text-xs w-full text-left"
+        >
+          A–Z
+        </button>
+      )}
+
+      {sortMode !== "custom" && (
+        <button
+          onClick={() => {
+            setSortMode("custom")
+            setShowSortMenu(false)
+          }}
+          className="block px-3 py-2 text-xs w-full text-left"
+        >
+          Custom
+        </button>
+      )}
+
+      {sortMode !== "priority" && (
+        <button
+          onClick={() => {
+            setSortMode("priority")
+            setShowSortMenu(false)
+          }}
+          className="block px-3 py-2 text-xs w-full text-left"
+        >
+          Priority
+        </button>
+      )}
+    </div>
+  )}
+</div>
+
       )}
     </div>
 
@@ -1923,6 +2074,7 @@ export default function DashboardPage() {
         onManualDraftPlaced={handleManualDraftPlaced}
         justPlacedDraftId={justPlacedDraftId}
         onReorderMail={handleReorderMail}
+        onReorderContact={handleReorderContact}
       />
     ))}
     
