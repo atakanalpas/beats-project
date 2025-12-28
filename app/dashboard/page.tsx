@@ -868,24 +868,32 @@ function CategorySection({
 
 const [activeContactInsertIndex, setActiveContactInsertIndex] = useState<number | null>(null)
 
+
 const handleDropContactAt = (index: number, e: React.DragEvent<HTMLDivElement>) => {
   e.preventDefault()
-  e.stopPropagation() // <- WICHTIG
+  e.stopPropagation() // <- wichtig: verhindert, dass der Category-Wrapper onDrop nochmal feuert
   setActiveContactInsertIndex(null)
 
   const contactId = e.dataTransfer.getData("contact")
   if (!contactId) return
 
-  onReorderContact(contactId, category.id, index)
+  // Off-by-one fix: wenn der Kontakt in dieser Liste schon drin ist und wir "nach unten" droppen,
+  // muss der Insert-Index um 1 runter, weil handleReorderContact intern den Kontakt vorher entfernt.
+  let targetIndex = index
+  const currentIndex = sortedContacts.findIndex(c => c.id === contactId)
+  if (currentIndex !== -1 && targetIndex > currentIndex) targetIndex -= 1
+
+  onReorderContact(contactId, category.id, targetIndex)
 }
 
 const handleDragOverContactZone = (index: number, e: React.DragEvent<HTMLDivElement>) => {
-  if (sortMode !== "custom") return
   const contactId = e.dataTransfer.getData("contact")
   if (!contactId) return
   e.preventDefault()
+  e.stopPropagation()
   if (activeContactInsertIndex !== index) setActiveContactInsertIndex(index)
 }
+
 
 const clearActiveContactInsert = () => setActiveContactInsertIndex(null)
 
@@ -895,7 +903,7 @@ const renderContactDropZone = (index: number) => (
     onDragOver={e => handleDragOverContactZone(index, e)}
     onDrop={e => handleDropContactAt(index, e)}
     onDragLeave={clearActiveContactInsert}
-    className={`h-2 transition-colors ${
+    className={`h-4 transition-colors ${
       activeContactInsertIndex === index ? "bg-blue-500/60" : "bg-transparent"
     }`}
   />
@@ -1198,6 +1206,7 @@ export default function DashboardPage() {
   const [scanning, setScanning] = useState(false)
   const [sortMode, setSortMode] = useState<SortMode>("az")
   const [showSortMenu, setShowSortMenu] = useState(false)
+  const mainScrollRef = useRef<HTMLElement | null>(null)
 
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
@@ -1247,6 +1256,27 @@ export default function DashboardPage() {
       if (stored === "light" || stored === "dark") setTheme(stored)
     } catch {}
   }, [])
+
+  useEffect(() => {
+  const onDragOver = (e: DragEvent) => {
+    const el = mainScrollRef.current
+    if (!el) return
+
+    // kein Autoscroll bei File-Drag (Import)
+    const types = Array.from(e.dataTransfer?.types ?? [])
+    if (types.includes("Files")) return
+
+    const rect = el.getBoundingClientRect()
+    const margin = 90
+    const speed = 26
+
+    if (e.clientY < rect.top + margin) el.scrollTop -= speed
+    else if (e.clientY > rect.bottom - margin) el.scrollTop += speed
+  }
+
+  document.addEventListener("dragover", onDragOver)
+  return () => document.removeEventListener("dragover", onDragOver)
+}, [])
 
   useEffect(() => {
     try {
@@ -1396,6 +1426,46 @@ export default function DashboardPage() {
 
     const fromCat = moving.categoryId ?? null
     const toCat = categoryId ?? null
+    const sortedUncategorizedContacts = useMemo(() => {
+  let list = filterContacts(contacts.filter(c => !c.categoryId), search)
+  const withIndex = list.map((c, idx) => ({ c, idx }))
+
+  if (sortMode === "az") {
+    return withIndex
+      .sort((a, b) => {
+        const la = firstLetterKey(a.c.name)
+        const lb = firstLetterKey(b.c.name)
+        if (la < lb) return -1
+        if (la > lb) return 1
+        return a.idx - b.idx
+      })
+      .map(x => x.c)
+  }
+
+  if (sortMode === "priority") {
+    return withIndex
+      .sort((a, b) => {
+        const da = daysSince(newestSentAtIso(a.c)) ?? -1
+        const db = daysSince(newestSentAtIso(b.c)) ?? -1
+
+        const ra = da >= priorityAfterDays ? 1 : 0
+        const rb = db >= priorityAfterDays ? 1 : 0
+
+        return (rb - ra) || (db - da) || (a.idx - b.idx)
+      })
+      .map(x => x.c)
+  }
+
+  // custom
+  return withIndex
+    .sort((a, b) => {
+      const pa = a.c.position ?? Number.POSITIVE_INFINITY
+      const pb = b.c.position ?? Number.POSITIVE_INFINITY
+      return pa - pb || a.idx - b.idx
+    })
+    .map(x => x.c)
+}, [contacts, search, sortMode, priorityAfterDays])
+
 
     const listInCat = (cat: string | null) =>
       prev
@@ -1664,7 +1734,42 @@ export default function DashboardPage() {
       </div>
     )
   }
+  const sortedUncategorizedContacts = useMemo(() => {
+  let list = filterContacts(contacts.filter(c => !c.categoryId), search)
+  const withIndex = list.map((c, idx) => ({ c, idx }))
 
+  if (sortMode === "az") {
+    return withIndex
+      .sort((a, b) => {
+        const la = firstLetterKey(a.c.name)
+        const lb = firstLetterKey(b.c.name)
+        if (la < lb) return -1
+        if (la > lb) return 1
+        return a.idx - b.idx
+      })
+      .map(x => x.c)
+  }
+
+  if (sortMode === "priority") {
+    return withIndex
+      .sort((a, b) => {
+        const da = daysSince(newestSentAtIso(a.c)) ?? -1
+        const db = daysSince(newestSentAtIso(b.c)) ?? -1
+        const ra = da >= priorityAfterDays ? 1 : 0
+        const rb = db >= priorityAfterDays ? 1 : 0
+        return (rb - ra) || (db - da) || (a.idx - b.idx)
+      })
+      .map(x => x.c)
+  }
+
+  return withIndex
+    .sort((a, b) => {
+      const pa = a.c.position ?? Number.POSITIVE_INFINITY
+      const pb = b.c.position ?? Number.POSITIVE_INFINITY
+      return pa - pb || a.idx - b.idx
+    })
+    .map(x => x.c)
+}, [contacts, search, sortMode, priorityAfterDays])
   const hasUncategorizedContacts = contacts.filter(c => !c.categoryId).length > 0
 
   return (
@@ -1978,7 +2083,7 @@ export default function DashboardPage() {
       </header>
 
       {/* CONTENT */}
-      <main className="flex-1 overflow-auto">
+      <main ref={mainScrollRef} className="flex-1 overflow-auto">
   <div className="min-w-[900px] px-4 py-4 space-y-8">
 
     {/* TABLE TOOLBAR */}
@@ -2093,7 +2198,7 @@ export default function DashboardPage() {
                 Uncategorized
               </div>
 
-              {filterContacts(contacts.filter(c => !c.categoryId), search).map(contact => (
+              {sortedUncategorizedContacts.map(contact => (
                 <div key={contact.id} className="relative">
                   {isDeletingMode && (
                     <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20">
