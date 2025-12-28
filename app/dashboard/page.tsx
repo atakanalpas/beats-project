@@ -1414,9 +1414,10 @@ export default function DashboardPage() {
   const handleDeleteContact = async (contactId: string) => {
   if (!confirm("Are you sure you want to delete this contact?")) return
 
-  // Optimistisch im UI löschen
+  // 1) Optimistisch im UI löschen
   setContacts(prev => prev.filter(c => c.id !== contactId))
 
+  // 2) In der DB löschen
   try {
     const res = await fetch(`/api/contacts/${contactId}`, {
       method: "DELETE",
@@ -1424,14 +1425,15 @@ export default function DashboardPage() {
 
     if (!res.ok) {
       console.error("Failed to delete contact", await res.text())
-      // Optional: hier könntest du den Kontakt wieder einfügen,
-      // wenn du "revert" machen willst
+      // Optional: Kontakt bei Fehler wiederherstellen
+      // setContacts(prev => [...prev, ...])
     }
   } catch (e) {
     console.error(e)
-    // Optional: revert im Fehlerfall
+    // Optional: revert
   }
 }
+
 
   const handleDragContactToCategory = async (contactId: string, categoryId: string) => {
   // 1) neue Position berechnen basierend auf aktuellem State
@@ -1567,40 +1569,65 @@ export default function DashboardPage() {
     return ids
   }, [categories, contacts])
 
-  const deleteItems = (itemsToDelete: string[]) => {
-    if (itemsToDelete.length === 0) return
+  const deleteItems = async (itemsToDelete: string[]) => {
+  if (itemsToDelete.length === 0) return
 
-    const contactIds = itemsToDelete.filter(id => id.startsWith("contact_"))
-    const categoryIds = itemsToDelete.filter(id => id.startsWith("category_"))
+  const contactIds = itemsToDelete.filter(id => id.startsWith("contact_"))
+  const categoryIds = itemsToDelete.filter(id => id.startsWith("category_"))
 
-    let message = ""
-    if (contactIds.length > 0 && categoryIds.length > 0) {
-      message = `Delete ${contactIds.length} contact(s) and ${categoryIds.length} category(ies)? Contacts in categories will be moved to Uncategorized.`
-    } else if (contactIds.length > 0) {
-      message = `Delete ${contactIds.length} selected contact(s)?`
-    } else if (categoryIds.length > 0) {
-      message = `Delete ${categoryIds.length} selected category(ies)? Contacts will be moved to Uncategorized.`
-    }
+  let message = ""
+  if (contactIds.length > 0 && categoryIds.length > 0) {
+    message = `Delete ${contactIds.length} contact(s) and ${categoryIds.length} category(ies)? Contacts in categories will be moved to Uncategorized.`
+  } else if (contactIds.length > 0) {
+    message = `Delete ${contactIds.length} selected contact(s)?`
+  } else if (categoryIds.length > 0) {
+    message = `Delete ${categoryIds.length} selected category(ies)? Contacts will be moved to Uncategorized.`
+  }
 
-    if (!message) return
+  if (!message) return
 
-    if (confirm(message)) {
-      if (contactIds.length > 0) {
-        setContacts(prev => prev.filter(c => !contactIds.includes(`contact_${c.id}`)))
-      }
+  if (!confirm(message)) return
 
-      if (categoryIds.length > 0) {
-        const categoryIdsOnly = categoryIds.map(id => id.replace("category_", ""))
-        setCategories(prev => prev.filter(c => !categoryIdsOnly.includes(c.id)))
-        setContacts(prev =>
-          prev.map(c => (c.categoryId && categoryIdsOnly.includes(c.categoryId) ? { ...c, categoryId: null } : c))
-        )
-      }
+  // 1) Optimistisch aus dem UI entfernen
+  if (contactIds.length > 0) {
+    setContacts(prev =>
+      prev.filter(c => !contactIds.includes(`contact_${c.id}`)),
+    )
+  }
 
-      setSelectedItems([])
-      setIsDeletingMode(false)
+  if (categoryIds.length > 0) {
+    const categoryIdsOnly = categoryIds.map(id => id.replace("category_", ""))
+    setCategories(prev => prev.filter(c => !categoryIdsOnly.includes(c.id)))
+    setContacts(prev =>
+      prev.map(c =>
+        c.categoryId && categoryIdsOnly.includes(c.categoryId)
+          ? { ...c, categoryId: null }
+          : c,
+      ),
+    )
+  }
+
+  setSelectedItems([])
+  setIsDeletingMode(false)
+
+  // 2) Backend löschen (nur Kontakte, Kategorien sind noch nicht in der DB)
+  if (contactIds.length > 0) {
+    const ids = contactIds.map(id => id.replace("contact_", ""))
+
+    try {
+      await Promise.all(
+        ids.map(id =>
+          fetch(`/api/contacts/${id}`, {
+            method: "DELETE",
+          }),
+        ),
+      )
+    } catch (e) {
+      console.error("Failed to delete some contacts in backend", e)
     }
   }
+}
+
 
   const handleDeleteSelected = () => deleteItems(selectedItems)
   const handleSelectAll = () => setSelectedItems(allSelectableIds)
