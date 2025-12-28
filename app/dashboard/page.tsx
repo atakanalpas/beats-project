@@ -1195,9 +1195,9 @@ function ManualDraftSource({
 
 export default function DashboardPage() {
   const [categories, setCategories] = useState<Category[]>([
-    { id: "cat-1", name: "Producer" },
-    { id: "cat-2", name: "Songwriter" }
-  ])
+  { id: "Producer", name: "Producer" },
+  { id: "Songwriter", name: "Songwriter" },
+])
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
@@ -1400,33 +1400,106 @@ export default function DashboardPage() {
 }
 
   const handleAddCategory = () => {
-    if (!newCategoryName.trim()) return
+  if (!newCategoryName.trim()) return
 
-    const newCategory: Category = { id: generateId(), name: newCategoryName.trim() }
-    setCategories(prev => [...prev, newCategory])
-    setNewCategoryName("")
-    setShowAddCategory(false)
-  }
+  const name = newCategoryName.trim()
 
-  const handleDeleteContact = (contactId: string) => {
-    if (confirm("Are you sure you want to delete this contact?")) {
-      setContacts(prev => prev.filter(c => c.id !== contactId))
+  const newCategory: Category = { id: name, name }  // ✅ id = name
+  setCategories(prev => [...prev, newCategory])
+  setNewCategoryName("")
+  setShowAddCategory(false)
+}
+
+
+  const handleDeleteContact = async (contactId: string) => {
+  if (!confirm("Are you sure you want to delete this contact?")) return
+
+  // Optimistisch im UI löschen
+  setContacts(prev => prev.filter(c => c.id !== contactId))
+
+  try {
+    const res = await fetch(`/api/contacts/${contactId}`, {
+      method: "DELETE",
+    })
+
+    if (!res.ok) {
+      console.error("Failed to delete contact", await res.text())
+      // Optional: hier könntest du den Kontakt wieder einfügen,
+      // wenn du "revert" machen willst
     }
+  } catch (e) {
+    console.error(e)
+    // Optional: revert im Fehlerfall
   }
+}
 
-  const handleDragContactToCategory = (contactId: string, categoryId: string) => {
-    setContacts(prev => {
-      const maxPos = Math.max(-1, ...prev.filter(c => c.categoryId === categoryId).map(c => c.position ?? -1)) + 1
-      return prev.map(c => (c.id === contactId ? { ...c, categoryId, position: maxPos } : c))
-    })
-  }
+  const handleDragContactToCategory = async (contactId: string, categoryId: string) => {
+  // 1) neue Position berechnen basierend auf aktuellem State
+  const maxPos =
+    Math.max(
+      -1,
+      ...contacts
+        .filter(c => c.categoryId === categoryId)
+        .map(c => c.position ?? -1)
+    ) + 1
 
-  const handleDragContactToUncategorized = (contactId: string) => {
-    setContacts(prev => {
-      const maxPos = Math.max(-1, ...prev.filter(c => (c.categoryId ?? null) === null).map(c => c.position ?? -1)) + 1
-      return prev.map(c => (c.id === contactId ? { ...c, categoryId: null, position: maxPos } : c))
+  // 2) UI sofort updaten
+  setContacts(prev =>
+    prev.map(c =>
+      c.id === contactId
+        ? { ...c, categoryId, position: maxPos }
+        : c
+    )
+  )
+
+  // 3) Backend updaten
+  try {
+    await fetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: categoryId,   // Prisma-Feld
+        position: maxPos,
+      }),
     })
+  } catch (e) {
+    console.error(e)
+    // Optional: revert im Fehlerfall
   }
+}
+
+
+  const handleDragContactToUncategorized = async (contactId: string) => {
+  const maxPos =
+    Math.max(
+      -1,
+      ...contacts
+        .filter(c => (c.categoryId ?? null) === null)
+        .map(c => c.position ?? -1)
+    ) + 1
+
+  setContacts(prev =>
+    prev.map(c =>
+      c.id === contactId
+        ? { ...c, categoryId: null, position: maxPos }
+        : c
+    )
+  )
+
+  try {
+    await fetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: null,
+        position: maxPos,
+      }),
+    })
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 
   const handleReorderMail = (contactId: string, mailId: string, newIndex: number) => {
     setContacts(prev =>
@@ -1702,7 +1775,7 @@ export default function DashboardPage() {
         name: c.name,
         email: c.email,
         // vorerst: Kategorien im Frontend weiter über categoryId regeln → alles erstmal Uncategorized
-        categoryId: null as string | null,
+        categoryId: c.category ?? null,
         position: c.position ?? 0,
         sentMails: (c.sentMails ?? []).map((m: any) => ({
           id: m.id,
