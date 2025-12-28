@@ -1206,8 +1206,8 @@ export default function DashboardPage() {
   const [scanning, setScanning] = useState(false)
   const [sortMode, setSortMode] = useState<SortMode>("az")
   const [showSortMenu, setShowSortMenu] = useState(false)
-  const mainScrollRef = useRef<HTMLElement | null>(null)
 
+  const mainScrollRef = useRef<HTMLElement | null>(null)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
   const [showAddMenu, setShowAddMenu] = useState(false)
@@ -1239,16 +1239,19 @@ export default function DashboardPage() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const dataMenuRef = useRef<HTMLDivElement>(null)
   const sortMenuRef = useRef<HTMLDivElement>(null)
-  const sortLabel =
-  sortMode === "az" ? "A–Z" : sortMode === "custom" ? "Custom" : "Priority"
 
+  const sortLabel = sortMode === "az" ? "A–Z" : sortMode === "custom" ? "Custom" : "Priority"
 
-  useOnClickOutside([addMenuRef, userMenuRef, dataMenuRef, sortMenuRef], () => {
-  setShowAddMenu(false)
-  setShowUserMenu(false)
-  setShowDataMenu(false)
-  setShowSortMenu(false)
-}, showAddMenu || showUserMenu || showDataMenu || showSortMenu)
+  useOnClickOutside(
+    [addMenuRef, userMenuRef, dataMenuRef, sortMenuRef],
+    () => {
+      setShowAddMenu(false)
+      setShowUserMenu(false)
+      setShowDataMenu(false)
+      setShowSortMenu(false)
+    },
+    showAddMenu || showUserMenu || showDataMenu || showSortMenu
+  )
 
   useEffect(() => {
     try {
@@ -1257,26 +1260,26 @@ export default function DashboardPage() {
     } catch {}
   }, [])
 
+  // Auto-scroll while dragging
   useEffect(() => {
-  const onDragOver = (e: DragEvent) => {
-    const el = mainScrollRef.current
-    if (!el) return
+    const onDragOver = (e: DragEvent) => {
+      const el = mainScrollRef.current
+      if (!el) return
 
-    // kein Autoscroll bei File-Drag (Import)
-    const types = Array.from(e.dataTransfer?.types ?? [])
-    if (types.includes("Files")) return
+      const types = Array.from((e as any).dataTransfer?.types ?? [])
+      if (types.includes("Files")) return
 
-    const rect = el.getBoundingClientRect()
-    const margin = 90
-    const speed = 26
+      const rect = el.getBoundingClientRect()
+      const margin = 90
+      const speed = 26
 
-    if (e.clientY < rect.top + margin) el.scrollTop -= speed
-    else if (e.clientY > rect.bottom - margin) el.scrollTop += speed
-  }
+      if (e.clientY < rect.top + margin) el.scrollTop -= speed
+      else if (e.clientY > rect.bottom - margin) el.scrollTop += speed
+    }
 
-  document.addEventListener("dragover", onDragOver)
-  return () => document.removeEventListener("dragover", onDragOver)
-}, [])
+    document.addEventListener("dragover", onDragOver)
+    return () => document.removeEventListener("dragover", onDragOver)
+  }, [])
 
   useEffect(() => {
     try {
@@ -1285,12 +1288,11 @@ export default function DashboardPage() {
   }, [theme])
 
   const closeAllMenus = () => {
-  setShowAddMenu(false)
-  setShowUserMenu(false)
-  setShowDataMenu(false)
-  setShowSortMenu(false)
-}
-
+    setShowAddMenu(false)
+    setShowUserMenu(false)
+    setShowDataMenu(false)
+    setShowSortMenu(false)
+  }
 
   const handleSearchFocus = () => {
     closeAllMenus()
@@ -1316,9 +1318,7 @@ export default function DashboardPage() {
         if (contact.id === contactId) {
           return {
             ...contact,
-            sentMails: contact.sentMails.map(mail =>
-              mail.id === mailId ? { ...mail, note } : mail
-            )
+            sentMails: contact.sentMails.map(mail => (mail.id === mailId ? { ...mail, note } : mail))
           }
         }
         return contact
@@ -1389,20 +1389,18 @@ export default function DashboardPage() {
   }
 
   const handleDragContactToCategory = (contactId: string, categoryId: string) => {
-  setContacts(prev => {
-    const maxPos = Math.max(-1, ...prev.filter(c => c.categoryId === categoryId).map(c => c.position ?? -1)) + 1
-    return prev.map(c => (c.id === contactId ? { ...c, categoryId, position: maxPos } : c))
-  })
-}
+    setContacts(prev => {
+      const maxPos = Math.max(-1, ...prev.filter(c => c.categoryId === categoryId).map(c => c.position ?? -1)) + 1
+      return prev.map(c => (c.id === contactId ? { ...c, categoryId, position: maxPos } : c))
+    })
+  }
 
   const handleDragContactToUncategorized = (contactId: string) => {
-  setContacts(prev => {
-    const maxPos =
-      Math.max(-1, ...prev.filter(c => (c.categoryId ?? null) === null).map(c => c.position ?? -1)) + 1
-
-    return prev.map(c => (c.id === contactId ? { ...c, categoryId: null, position: maxPos } : c))
-  })
-}
+    setContacts(prev => {
+      const maxPos = Math.max(-1, ...prev.filter(c => (c.categoryId ?? null) === null).map(c => c.position ?? -1)) + 1
+      return prev.map(c => (c.id === contactId ? { ...c, categoryId: null, position: maxPos } : c))
+    })
+  }
 
   const handleReorderMail = (contactId: string, mailId: string, newIndex: number) => {
     setContacts(prev =>
@@ -1419,84 +1417,45 @@ export default function DashboardPage() {
       })
     )
   }
+
+  // ✅ IMPORTANT: NO hooks inside this function
   const handleReorderContact = (contactId: string, categoryId: string, newIndex: number) => {
-  setContacts(prev => {
-    const moving = prev.find(c => c.id === contactId)
-    if (!moving) return prev
+    setContacts(prev => {
+      const moving = prev.find(c => c.id === contactId)
+      if (!moving) return prev
 
-    const fromCat = moving.categoryId ?? null
-    const toCat = categoryId ?? null
-    const sortedUncategorizedContacts = useMemo(() => {
-  let list = filterContacts(contacts.filter(c => !c.categoryId), search)
-  const withIndex = list.map((c, idx) => ({ c, idx }))
+      const fromCat = moving.categoryId ?? null
+      const toCat = categoryId ?? null
 
-  if (sortMode === "az") {
-    return withIndex
-      .sort((a, b) => {
-        const la = firstLetterKey(a.c.name)
-        const lb = firstLetterKey(b.c.name)
-        if (la < lb) return -1
-        if (la > lb) return 1
-        return a.idx - b.idx
+      const listInCat = (cat: string | null) =>
+        prev
+          .filter(c => (c.categoryId ?? null) === cat && c.id !== contactId)
+          .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
+
+      const fromList = listInCat(fromCat)
+      const toListBase = fromCat === toCat ? fromList : listInCat(toCat)
+
+      const clamped = Math.max(0, Math.min(newIndex, toListBase.length))
+      const toList = [...toListBase]
+      toList.splice(clamped, 0, { ...moving, categoryId: toCat })
+
+      const toPos = new Map<string, number>()
+      toList.forEach((c, idx) => toPos.set(c.id, idx))
+
+      const fromPos = new Map<string, number>()
+      if (fromCat !== toCat) fromList.forEach((c, idx) => fromPos.set(c.id, idx))
+
+      return prev.map(c => {
+        const cid = c.categoryId ?? null
+
+        if (c.id === contactId) return { ...c, categoryId: toCat, position: toPos.get(c.id) ?? 0 }
+        if (cid === toCat && toPos.has(c.id)) return { ...c, position: toPos.get(c.id)! }
+        if (fromCat !== toCat && cid === fromCat && fromPos.has(c.id)) return { ...c, position: fromPos.get(c.id)! }
+
+        return c
       })
-      .map(x => x.c)
-  }
-
-  if (sortMode === "priority") {
-    return withIndex
-      .sort((a, b) => {
-        const da = daysSince(newestSentAtIso(a.c)) ?? -1
-        const db = daysSince(newestSentAtIso(b.c)) ?? -1
-
-        const ra = da >= priorityAfterDays ? 1 : 0
-        const rb = db >= priorityAfterDays ? 1 : 0
-
-        return (rb - ra) || (db - da) || (a.idx - b.idx)
-      })
-      .map(x => x.c)
-  }
-
-  // custom
-  return withIndex
-    .sort((a, b) => {
-      const pa = a.c.position ?? Number.POSITIVE_INFINITY
-      const pb = b.c.position ?? Number.POSITIVE_INFINITY
-      return pa - pb || a.idx - b.idx
     })
-    .map(x => x.c)
-}, [contacts, search, sortMode, priorityAfterDays])
-
-
-    const listInCat = (cat: string | null) =>
-      prev
-        .filter(c => (c.categoryId ?? null) === cat && c.id !== contactId)
-        .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
-
-    const fromList = listInCat(fromCat)
-    const toListBase = fromCat === toCat ? fromList : listInCat(toCat)
-
-    const clamped = Math.max(0, Math.min(newIndex, toListBase.length))
-    const toList = [...toListBase]
-    toList.splice(clamped, 0, { ...moving, categoryId: toCat })
-
-    const toPos = new Map<string, number>()
-    toList.forEach((c, idx) => toPos.set(c.id, idx))
-
-    const fromPos = new Map<string, number>()
-    if (fromCat !== toCat) fromList.forEach((c, idx) => fromPos.set(c.id, idx))
-
-    return prev.map(c => {
-      const cid = c.categoryId ?? null
-
-      if (c.id === contactId) return { ...c, categoryId: toCat, position: toPos.get(c.id) ?? 0 }
-      if (cid === toCat && toPos.has(c.id)) return { ...c, position: toPos.get(c.id)! }
-      if (fromCat !== toCat && cid === fromCat && fromPos.has(c.id)) return { ...c, position: fromPos.get(c.id)! }
-
-      return c
-    })
-  })
-}
-
+  }
 
   const toggleItemSelection = (itemId: string) => {
     setSelectedItems(prev => (prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]))
@@ -1550,94 +1509,78 @@ export default function DashboardPage() {
   const handleDeleteAll = () => deleteItems(allSelectableIds)
 
   const handleCsvExport = () => {
-  const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
+    const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
 
-  // CSV-safe: Quotes escapen + Feld immer in "..."
-  const safe = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`
+    const safe = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`
 
-  // ManualDrafts nach Kontakt gruppieren
-  const draftsByContact = new Map<string, ManualDraft[]>()
-  for (const d of manualDrafts ?? []) {
-    if (!d.contactId) continue
-    const arr = draftsByContact.get(d.contactId) ?? []
-    arr.push(d)
-    draftsByContact.set(d.contactId, arr)
+    const draftsByContact = new Map<string, ManualDraft[]>()
+    for (const d of manualDrafts ?? []) {
+      if (!d.contactId) continue
+      const arr = draftsByContact.get(d.contactId) ?? []
+      arr.push(d)
+      draftsByContact.set(d.contactId, arr)
+    }
+
+    const stripExt = (filename: string) => filename.replace(/\.[^/.]+$/, "")
+
+    const buildCardCell = (label: string, dateIso?: string, lines: string[] = []) => {
+      const dateLine = dateIso ? formatDate(dateIso) : "—"
+
+      const cleanedLines = lines
+        .flatMap(l => String(l ?? "").split(/\r?\n/))
+        .map(s => s.trim())
+        .filter(Boolean)
+
+      return [`(${label})`, dateLine, ...cleanedLines].join("\n")
+    }
+
+    const cardsPerContact: string[][] = contacts.map(contact => {
+      const drafts = draftsByContact.get(contact.id) ?? []
+
+      const mailCards = (contact.sentMails ?? []).map(m => {
+        const ms = safeDateMs(m.sentAt) ?? Number.POSITIVE_INFINITY
+        const attachmentLines = (m.attachments ?? []).map(a => stripExt(a.filename))
+        const noteLines = m.note ? [m.note] : []
+        return {
+          ms,
+          cell: buildCardCell("SENT MAIL", m.sentAt, [...attachmentLines, ...noteLines])
+        }
+      })
+
+      const noteCards = drafts.map(d => {
+        const ms = safeDateMs(d.sentAt) ?? Number.POSITIVE_INFINITY
+        return {
+          ms,
+          cell: buildCardCell("NOTE", d.sentAt, d.note ? [d.note] : [])
+        }
+      })
+
+      return [...mailCards, ...noteCards]
+        .sort((a, b) => a.ms - b.ms)
+        .map(x => x.cell)
+    })
+
+    const maxCards = cardsPerContact.reduce((m, arr) => Math.max(m, arr.length), 0)
+    const header = ["name", "email", "category", ...Array(maxCards).fill("")].join(",")
+
+    const lines = [
+      header,
+      ...contacts.map((contact, idx) => {
+        const category = contact.categoryId ? (categoryNameById.get(contact.categoryId) ?? "") : ""
+
+        const cards = [...(cardsPerContact[idx] ?? [])]
+        while (cards.length < maxCards) cards.push("")
+
+        return [safe(contact.name), safe(contact.email), safe(category), ...cards.map(safe)].join(",")
+      })
+    ]
+
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+
+    downloadTextFile(`SentLogs_Export_${today}.csv`, lines.join("\n"))
   }
-
-  // Optional: Dateiendungen wie .wav entfernen (dein Beispiel zeigt ohne)
-  const stripExt = (filename: string) => filename.replace(/\.[^/.]+$/, "")
-
-  const buildCardCell = (label: string, dateIso?: string, lines: string[] = []) => {
-    const dateLine = dateIso ? formatDate(dateIso) : "—"
-
-    const cleanedLines = lines
-      .flatMap(l => String(l ?? "").split(/\r?\n/))
-      .map(s => s.trim())
-      .filter(Boolean)
-
-    // Format wie in deinem Beispiel: (LABEL)\nDATUM\nINHALT...
-    return [`(${label})`, dateLine, ...cleanedLines].join("\n")
-  }
-
-  // Pro Kontakt: alle Cards (SentMails + Notes) sammeln
-  // -> sortiert nach Datum, damit Notes “dazwischen” landen
-  const cardsPerContact: string[][] = contacts.map(contact => {
-    const drafts = draftsByContact.get(contact.id) ?? []
-
-    const mailCards = (contact.sentMails ?? []).map(m => {
-      const ms = safeDateMs(m.sentAt) ?? Number.POSITIVE_INFINITY
-      const attachmentLines = (m.attachments ?? []).map(a => stripExt(a.filename))
-      const noteLines = m.note ? [m.note] : []
-      return {
-        ms,
-        cell: buildCardCell("SENT MAIL", m.sentAt, [...attachmentLines, ...noteLines])
-      }
-    })
-
-    const noteCards = drafts.map(d => {
-      const ms = safeDateMs(d.sentAt) ?? Number.POSITIVE_INFINITY
-      return {
-        ms,
-        cell: buildCardCell("NOTE", d.sentAt, d.note ? [d.note] : [])
-      }
-    })
-
-    return [...mailCards, ...noteCards]
-      .sort((a, b) => a.ms - b.ms)
-      .map(x => x.cell)
-  })
-
-  // maximale Anzahl Cards über alle Kontakte -> so viele Spalten exportieren wir
-  const maxCards = cardsPerContact.reduce((m, arr) => Math.max(m, arr.length), 0)
-
-  // Header wie in deinem Beispiel: nach category einfach leere Spalten
-  const header = ["name", "email", "category", ...Array(maxCards).fill("")].join(",")
-
-  const lines = [
-    header,
-    ...contacts.map((contact, idx) => {
-      const category = contact.categoryId ? (categoryNameById.get(contact.categoryId) ?? "") : ""
-
-      const cards = [...(cardsPerContact[idx] ?? [])]
-      while (cards.length < maxCards) cards.push("")
-
-      return [
-        safe(contact.name),
-        safe(contact.email),
-        safe(category),
-        ...cards.map(safe)
-      ].join(",")
-    })
-  ]
-
-  // Lokales Datum YYYY-MM-DD
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-
-  downloadTextFile(`SentLogs_Export_${today}.csv`, lines.join("\n"))
-}
-
 
   const handleFilePick = () => {
     closeAllMenus()
@@ -1727,6 +1670,46 @@ export default function DashboardPage() {
     }
   }, [])
 
+  // ✅ MUST be before the loading return
+  const sortedUncategorizedContacts = useMemo(() => {
+    let list = filterContacts(contacts.filter(c => !c.categoryId), search)
+    const withIndex = list.map((c, idx) => ({ c, idx }))
+
+    if (sortMode === "az") {
+      return withIndex
+        .sort((a, b) => {
+          const la = firstLetterKey(a.c.name)
+          const lb = firstLetterKey(b.c.name)
+          if (la < lb) return -1
+          if (la > lb) return 1
+          return a.idx - b.idx
+        })
+        .map(x => x.c)
+    }
+
+    if (sortMode === "priority") {
+      return withIndex
+        .sort((a, b) => {
+          const da = daysSince(newestSentAtIso(a.c)) ?? -1
+          const db = daysSince(newestSentAtIso(b.c)) ?? -1
+          const ra = da >= priorityAfterDays ? 1 : 0
+          const rb = db >= priorityAfterDays ? 1 : 0
+          return (rb - ra) || (db - da) || (a.idx - b.idx)
+        })
+        .map(x => x.c)
+    }
+
+    return withIndex
+      .sort((a, b) => {
+        const pa = a.c.position ?? Number.POSITIVE_INFINITY
+        const pb = b.c.position ?? Number.POSITIVE_INFINITY
+        return pa - pb || a.idx - b.idx
+      })
+      .map(x => x.c)
+  }, [contacts, search, sortMode, priorityAfterDays])
+
+  const hasUncategorizedContacts = sortedUncategorizedContacts.length > 0
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center text-sm text-zinc-400 bg-white dark:bg-zinc-950">
@@ -1734,43 +1717,6 @@ export default function DashboardPage() {
       </div>
     )
   }
-  const sortedUncategorizedContacts = useMemo(() => {
-  let list = filterContacts(contacts.filter(c => !c.categoryId), search)
-  const withIndex = list.map((c, idx) => ({ c, idx }))
-
-  if (sortMode === "az") {
-    return withIndex
-      .sort((a, b) => {
-        const la = firstLetterKey(a.c.name)
-        const lb = firstLetterKey(b.c.name)
-        if (la < lb) return -1
-        if (la > lb) return 1
-        return a.idx - b.idx
-      })
-      .map(x => x.c)
-  }
-
-  if (sortMode === "priority") {
-    return withIndex
-      .sort((a, b) => {
-        const da = daysSince(newestSentAtIso(a.c)) ?? -1
-        const db = daysSince(newestSentAtIso(b.c)) ?? -1
-        const ra = da >= priorityAfterDays ? 1 : 0
-        const rb = db >= priorityAfterDays ? 1 : 0
-        return (rb - ra) || (db - da) || (a.idx - b.idx)
-      })
-      .map(x => x.c)
-  }
-
-  return withIndex
-    .sort((a, b) => {
-      const pa = a.c.position ?? Number.POSITIVE_INFINITY
-      const pb = b.c.position ?? Number.POSITIVE_INFINITY
-      return pa - pb || a.idx - b.idx
-    })
-    .map(x => x.c)
-}, [contacts, search, sortMode, priorityAfterDays])
-  const hasUncategorizedContacts = contacts.filter(c => !c.categoryId).length > 0
 
   return (
     <div
@@ -1823,7 +1769,6 @@ export default function DashboardPage() {
       {/* HEADER */}
       <header className="flex items-center gap-4 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
         <div className="font-semibold text-lg">Audio Send Log</div>
-
         <div className="flex-1" />
 
         <div className="flex items-center gap-3">
@@ -1950,7 +1895,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* TRASH BUTTON + SELECT/DELETE ALL CONTROLS */}
+          {/* TRASH */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -2084,105 +2029,94 @@ export default function DashboardPage() {
 
       {/* CONTENT */}
       <main ref={mainScrollRef} className="flex-1 overflow-auto">
-  <div className="min-w-[900px] px-4 py-4 space-y-8">
+        <div className="min-w-[900px] px-4 py-4 space-y-8">
+          {/* TABLE TOOLBAR */}
+          <div className="flex items-center justify-between mb-4 px-2">
+            {isDeletingMode ? (
+              <div className="flex items-center gap-2">
+                <button onClick={handleSelectAll} className="px-2 py-1 text-xs border rounded">
+                  Select all
+                </button>
+                <button onClick={handleClearSelection} className="px-2 py-1 text-xs border rounded">
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <div className="relative" ref={sortMenuRef}>
+                <button onClick={() => setShowSortMenu(v => !v)} className="px-2 py-1 text-xs border rounded">
+                  {sortLabel}
+                </button>
 
-    {/* TABLE TOOLBAR */}
-    <div className="flex items-center justify-between mb-4 px-2">
-      {isDeletingMode ? (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSelectAll}
-            className="px-2 py-1 text-xs border rounded"
-          >
-            Select all
-          </button>
-          <button
-            onClick={handleClearSelection}
-            className="px-2 py-1 text-xs border rounded"
-          >
-            Clear
-          </button>
-        </div>
-      ) : (
-        <div className="relative" ref={sortMenuRef}>
-  <button
-    onClick={() => setShowSortMenu(v => !v)}
-    className="px-2 py-1 text-xs border rounded"
-  >
-    {sortLabel}
-  </button>
+                {showSortMenu && (
+                  <div className="absolute mt-1 bg-white dark:bg-zinc-950 border rounded shadow z-20">
+                    {sortMode !== "az" && (
+                      <button
+                        onClick={() => {
+                          setSortMode("az")
+                          setShowSortMenu(false)
+                        }}
+                        className="block px-3 py-2 text-xs w-full text-left"
+                      >
+                        A–Z
+                      </button>
+                    )}
 
-  {showSortMenu && (
-    <div className="absolute mt-1 bg-white dark:bg-zinc-950 border rounded shadow z-20">
-      {sortMode !== "az" && (
-        <button
-          onClick={() => {
-            setSortMode("az")
-            setShowSortMenu(false)
-          }}
-          className="block px-3 py-2 text-xs w-full text-left"
-        >
-          A–Z
-        </button>
-      )}
+                    {sortMode !== "custom" && (
+                      <button
+                        onClick={() => {
+                          setSortMode("custom")
+                          setShowSortMenu(false)
+                        }}
+                        className="block px-3 py-2 text-xs w-full text-left"
+                      >
+                        Custom
+                      </button>
+                    )}
 
-      {sortMode !== "custom" && (
-        <button
-          onClick={() => {
-            setSortMode("custom")
-            setShowSortMenu(false)
-          }}
-          className="block px-3 py-2 text-xs w-full text-left"
-        >
-          Custom
-        </button>
-      )}
+                    {sortMode !== "priority" && (
+                      <button
+                        onClick={() => {
+                          setSortMode("priority")
+                          setShowSortMenu(false)
+                        }}
+                        className="block px-3 py-2 text-xs w-full text-left"
+                      >
+                        Priority
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
-      {sortMode !== "priority" && (
-        <button
-          onClick={() => {
-            setSortMode("priority")
-            setShowSortMenu(false)
-          }}
-          className="block px-3 py-2 text-xs w-full text-left"
-        >
-          Priority
-        </button>
-      )}
-    </div>
-  )}
-</div>
+          {categories.map(category => (
+            <CategorySection
+              key={category.id}
+              category={category}
+              isDeletingMode={isDeletingMode}
+              selectedItems={selectedItems}
+              onToggleSelection={toggleItemSelection}
+              onUpdateCategoryName={updateCategoryName}
+              contacts={contacts}
+              search={search}
+              sortMode={sortMode}
+              priorityAfterDays={priorityAfterDays}
+              manualDrafts={manualDrafts}
+              setManualDrafts={setManualDrafts}
+              onUpdateMailNote={updateMailNote}
+              onUpdateContactName={updateContactName}
+              onUpdateContactEmail={updateContactEmail}
+              onDeleteContact={handleDeleteContact}
+              onDeleteMail={deleteMail}
+              onDragContactToCategory={handleDragContactToCategory}
+              onManualDraftPlaced={handleManualDraftPlaced}
+              justPlacedDraftId={justPlacedDraftId}
+              onReorderMail={handleReorderMail}
+              onReorderContact={handleReorderContact}
+            />
+          ))}
 
-      )}
-    </div>
-
-    {categories.map(category => (
-      <CategorySection
-        key={category.id}
-        category={category}
-        isDeletingMode={isDeletingMode}
-        selectedItems={selectedItems}
-        onToggleSelection={toggleItemSelection}
-        onUpdateCategoryName={updateCategoryName}
-        contacts={contacts}
-        search={search}
-        sortMode={sortMode}
-        priorityAfterDays={priorityAfterDays}
-        manualDrafts={manualDrafts}
-        setManualDrafts={setManualDrafts}
-        onUpdateMailNote={updateMailNote}
-        onUpdateContactName={updateContactName}
-        onUpdateContactEmail={updateContactEmail}
-        onDeleteContact={handleDeleteContact}
-        onDeleteMail={deleteMail}
-        onDragContactToCategory={handleDragContactToCategory}
-        onManualDraftPlaced={handleManualDraftPlaced}
-        justPlacedDraftId={justPlacedDraftId}
-        onReorderMail={handleReorderMail}
-        onReorderContact={handleReorderContact}
-      />
-    ))}
-    
           {hasUncategorizedContacts && (
             <div
               className="border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden"
@@ -2231,12 +2165,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ADD CONTACT MODAL – ENTER bestätigt, ESC schließt */}
+          {/* ADD CONTACT MODAL */}
           {showAddContact && (
-            <div
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-              onMouseDown={() => closeAllMenus()}
-            >
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => closeAllMenus()}>
               <div
                 className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-96 border border-zinc-200 dark:border-zinc-800"
                 onMouseDown={e => e.stopPropagation()}
@@ -2274,10 +2205,7 @@ export default function DashboardPage() {
                   >
                     Cancel
                   </button>
-                  <button
-                    onClick={handleAddContact}
-                    className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black"
-                  >
+                  <button onClick={handleAddContact} className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black">
                     Add
                   </button>
                 </div>
@@ -2285,12 +2213,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ADD CATEGORY MODAL – ENTER bestätigt, ESC schließt */}
+          {/* ADD CATEGORY MODAL */}
           {showAddCategory && (
-            <div
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-              onMouseDown={() => closeAllMenus()}
-            >
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => closeAllMenus()}>
               <div
                 className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-96 border border-zinc-200 dark:border-zinc-800"
                 onMouseDown={e => e.stopPropagation()}
@@ -2316,10 +2241,7 @@ export default function DashboardPage() {
                   >
                     Cancel
                   </button>
-                  <button
-                    onClick={handleAddCategory}
-                    className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black"
-                  >
+                  <button onClick={handleAddCategory} className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black">
                     Add
                   </button>
                 </div>
@@ -2331,10 +2253,7 @@ export default function DashboardPage() {
 
       {/* SETTINGS MODAL */}
       {showSettingsModal && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onMouseDown={() => setShowSettingsModal(false)}
-        >
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => setShowSettingsModal(false)}>
           <div
             className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[420px] border border-zinc-200 dark:border-zinc-800"
             onMouseDown={e => e.stopPropagation()}
@@ -2396,24 +2315,17 @@ export default function DashboardPage() {
 
       {/* UPLOAD PREVIEW MODAL */}
       {showUploadPreview && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onMouseDown={() => setShowUploadPreview(false)}
-        >
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={() => setShowUploadPreview(false)}>
           <div
             className="bg-white dark:bg-zinc-950 rounded-lg p-6 w-[640px] border border-zinc-200 dark:border-zinc-800"
             onMouseDown={e => e.stopPropagation()}
           >
             <h3 className="font-semibold mb-2">File Upload Preview</h3>
-            <div className="text-xs text-zinc-500 mb-4">
-              Expected: column A = Name, column B = Email (Google Sheets export works).
-            </div>
+            <div className="text-xs text-zinc-500 mb-4">Expected: column A = Name, column B = Email (Google Sheets export works).</div>
 
             {importErrors.length > 0 && (
               <div className="mb-3 rounded border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3">
-                <div className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">
-                  Some rows have issues:
-                </div>
+                <div className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">Some rows have issues:</div>
                 <ul className="text-xs text-red-700 dark:text-red-300 list-disc ml-5">
                   {importErrors.map((e, idx) => (
                     <li key={idx}>{e}</li>
@@ -2448,10 +2360,7 @@ export default function DashboardPage() {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleImportConfirm}
-                className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black"
-              >
+              <button onClick={handleImportConfirm} className="px-4 py-2 bg-black text-white rounded dark:bg-white dark:text-black">
                 Import
               </button>
             </div>
