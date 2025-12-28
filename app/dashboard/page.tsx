@@ -1340,61 +1340,89 @@ export default function DashboardPage() {
   const handleCsvExport = () => {
   const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
 
-  const safe = (v: string) =>
-    `"${String(v ?? "").replace(/"/g, '""')}"`
+  // CSV-safe: Quotes escapen + Feld immer in "..."
+  const safe = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`
+
+  // ManualDrafts nach Kontakt gruppieren
+  const draftsByContact = new Map<string, ManualDraft[]>()
+  for (const d of manualDrafts ?? []) {
+    if (!d.contactId) continue
+    const arr = draftsByContact.get(d.contactId) ?? []
+    arr.push(d)
+    draftsByContact.set(d.contactId, arr)
+  }
+
+  // Optional: Dateiendungen wie .wav entfernen (dein Beispiel zeigt ohne)
+  const stripExt = (filename: string) => filename.replace(/\.[^/.]+$/, "")
+
+  const buildCardCell = (label: string, dateIso?: string, lines: string[] = []) => {
+    const dateLine = dateIso ? formatDate(dateIso) : "—"
+
+    const cleanedLines = lines
+      .flatMap(l => String(l ?? "").split(/\r?\n/))
+      .map(s => s.trim())
+      .filter(Boolean)
+
+    // Format wie in deinem Beispiel: (LABEL)\nDATUM\nINHALT...
+    return [`(${label})`, dateLine, ...cleanedLines].join("\n")
+  }
+
+  // Pro Kontakt: alle Cards (SentMails + Notes) sammeln
+  // -> sortiert nach Datum, damit Notes “dazwischen” landen
+  const cardsPerContact: string[][] = contacts.map(contact => {
+    const drafts = draftsByContact.get(contact.id) ?? []
+
+    const mailCards = (contact.sentMails ?? []).map(m => {
+      const ms = safeDateMs(m.sentAt) ?? Number.POSITIVE_INFINITY
+      const attachmentLines = (m.attachments ?? []).map(a => stripExt(a.filename))
+      const noteLines = m.note ? [m.note] : []
+      return {
+        ms,
+        cell: buildCardCell("SENT MAIL", m.sentAt, [...attachmentLines, ...noteLines])
+      }
+    })
+
+    const noteCards = drafts.map(d => {
+      const ms = safeDateMs(d.sentAt) ?? Number.POSITIVE_INFINITY
+      return {
+        ms,
+        cell: buildCardCell("NOTE", d.sentAt, d.note ? [d.note] : [])
+      }
+    })
+
+    return [...mailCards, ...noteCards]
+      .sort((a, b) => a.ms - b.ms)
+      .map(x => x.cell)
+  })
+
+  // maximale Anzahl Cards über alle Kontakte -> so viele Spalten exportieren wir
+  const maxCards = cardsPerContact.reduce((m, arr) => Math.max(m, arr.length), 0)
+
+  // Header wie in deinem Beispiel: nach category einfach leere Spalten
+  const header = ["name", "email", "category", ...Array(maxCards).fill("")].join(",")
 
   const lines = [
-    ["name", "email", "category", "notes", "entries"].join(","),
+    header,
+    ...contacts.map((contact, idx) => {
+      const category = contact.categoryId ? (categoryNameById.get(contact.categoryId) ?? "") : ""
 
-    ...contacts.map(contact => {
-      const category = contact.categoryId
-        ? categoryNameById.get(contact.categoryId) ?? ""
-        : ""
-
-      // 🔹 Notes aus gescannten Mails
-      const scannedNotes =
-        contact.sentMails
-          ?.map(m => m.note)
-          .filter(Boolean) ?? []
-
-      // 🔹 Notes aus manuellen Drafts (die diesem Kontakt zugeordnet sind)
-      const manualNotes =
-        manualDrafts
-          ?.filter(d => d.contactId === contact.id)
-          .map(d => d.note)
-          .filter(Boolean) ?? []
-
-      const allNotes = [...scannedNotes, ...manualNotes].join(" | ")
-
-      // 🔹 Entries / Kästchen (Text-Zusammenfassung)
-      const scannedEntries =
-  contact.sentMails?.map(m => {
-    const date = m.sentAt ? formatDate(m.sentAt) : ""
-    const note = m.note ? m.note : "Sent mail"
-    return date ? `${date}: ${note}` : note
-  }) ?? []
-
-
-      const manualEntries =
-        manualDrafts
-          ?.filter(d => d.contactId === contact.id)
-          .map(d => {
-            const date = d.sentAt ? formatDate(d.sentAt) : ""
-            return `${date}: Manual`
-          }) ?? []
-
-      const allEntries = [...scannedEntries, ...manualEntries].join(" | ")
+      const cards = [...(cardsPerContact[idx] ?? [])]
+      while (cards.length < maxCards) cards.push("")
 
       return [
         safe(contact.name),
         safe(contact.email),
         safe(category),
-        safe(allNotes),
-        safe(allEntries)
+        ...cards.map(safe)
       ].join(",")
     })
   ]
-  const today = new Date().toISOString().split("T")[0]
+
+  // Lokales Datum YYYY-MM-DD
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+
   downloadTextFile(`SentLogs_Export_${today}.csv`, lines.join("\n"))
 }
 
