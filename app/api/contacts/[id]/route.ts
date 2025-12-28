@@ -1,13 +1,15 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { prisma } from "@/lib/prisma"
 import { authOptions } from "@/lib/auth-options"
 
 // PATCH /api/contacts/:id  -> Kontakt updaten (name, email, category, position, lastSentAt)
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
+
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -35,9 +37,8 @@ export async function PATCH(
   try {
     const updated = await prisma.contact.update({
       where: {
-        // Sicherheitsnetz: nur Kontakte dieses Users
-        id: params.id,
-        userId: user.id,
+        id,
+        userId: user.id, // Sicherheit: nur eigene Kontakte
       },
       data: {
         ...(name !== undefined ? { name } : {}),
@@ -51,18 +52,20 @@ export async function PATCH(
     })
 
     return NextResponse.json(updated)
-  } catch (err: any) {
-    if (err.code === "P2025") {
+  } catch (err) {
+    const anyErr = err as any
+
+    if (anyErr.code === "P2025") {
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
-    if (err.code === "P2002") {
+    if (anyErr.code === "P2002") {
       return NextResponse.json(
         { error: "Email already exists for this user" },
         { status: 409 },
       )
     }
 
-    console.error(err)
+    console.error(anyErr)
     return NextResponse.json(
       { error: "Failed to update contact" },
       { status: 500 },
@@ -72,9 +75,11 @@ export async function PATCH(
 
 // DELETE /api/contacts/:id  -> Kontakt löschen
 export async function DELETE(
-  _req: Request,
-  { params }: { params: { id: string } }
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
+
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -92,18 +97,20 @@ export async function DELETE(
   try {
     await prisma.contact.delete({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     })
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    if (err.code === "P2025") {
+  } catch (err) {
+    const anyErr = err as any
+
+    if (anyErr.code === "P2025") {
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
 
-    console.error(err)
+    console.error(anyErr)
     return NextResponse.json(
       { error: "Failed to delete contact" },
       { status: 500 },
