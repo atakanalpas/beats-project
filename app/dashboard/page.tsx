@@ -1351,27 +1351,53 @@ export default function DashboardPage() {
     }
   }
 
-  const handleAddContact = () => {
-    if (!newContactName.trim() || !newContactEmail.trim()) return
-    const email = sanitizeEmail(newContactEmail)
-    if (!isValidEmail(email)) {
-      alert("Please enter a valid email.")
+  const handleAddContact = async () => {
+  if (!newContactName.trim() || !newContactEmail.trim()) return
+  const email = sanitizeEmail(newContactEmail)
+  if (!isValidEmail(email)) {
+    alert("Please enter a valid email.")
+    return
+  }
+
+  try {
+    const res = await fetch("/api/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        name: newContactName.trim(),
+        // vorerst keine Kategorie → null
+        category: null
+      })
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert("Failed to create contact: " + (err.error ?? res.statusText))
       return
     }
 
-    const newContact: Contact = {
-      id: generateId(),
-      name: newContactName.trim(),
-      email,
+    const created = await res.json()
+
+    // Backend-Contact -> Frontend-Contact
+    const mapped: Contact = {
+      id: created.id,
+      name: created.name,
+      email: created.email,
       categoryId: null,
-      sentMails: []
+      position: created.position ?? 0,
+      sentMails: [] // neuer Kontakt hat noch keine Mails
     }
 
-    setContacts(prev => [...prev, newContact])
+    setContacts(prev => [...prev, mapped])
     setNewContactName("")
     setNewContactEmail("")
     setShowAddContact(false)
+  } catch (e) {
+    console.error(e)
+    alert("Unexpected error creating contact")
   }
+}
 
   const handleAddCategory = () => {
     if (!newCategoryName.trim()) return
@@ -1658,17 +1684,49 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+  const load = async () => {
     try {
-      setTimeout(() => {
-        setContacts(MOCK_CONTACTS)
+      const res = await fetch("/api/dashboard")
+      if (!res.ok) {
+        console.error("Failed to load dashboard data", await res.text())
+        setContacts([])
         setLoading(false)
-      }, 500)
+        return
+      }
+
+      const data = await res.json() as any[]
+
+      // Backend-Contact -> Frontend-Contact mappen
+      const mapped = data.map(c => ({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        // vorerst: Kategorien im Frontend weiter über categoryId regeln → alles erstmal Uncategorized
+        categoryId: null as string | null,
+        position: c.position ?? 0,
+        sentMails: (c.sentMails ?? []).map((m: any) => ({
+          id: m.id,
+          sentAt: m.sentAt,
+          note: "", // Backend hat noch kein Feld dafür → vorerst leer
+          attachments: (m.attachments ?? []).map((a: any) => ({
+            id: a.id,
+            filename: a.filename
+          }))
+        }))
+      }))
+
+      setContacts(mapped)
+      setLoading(false)
     } catch (error) {
       console.error("Error loading data:", error)
-      setContacts(MOCK_CONTACTS)
+      setContacts([])
       setLoading(false)
     }
-  }, [])
+  }
+
+  void load()
+}, [])
+
 
   // ✅ MUST be before the loading return
   const sortedUncategorizedContacts = useMemo(() => {
