@@ -52,7 +52,7 @@ export async function POST(req: Request) {
         userId: user.id,
         email: email.toLowerCase().trim(),
         name,
-        category: category ?? null,
+        categoryId: category ?? null,
         position: nextPosition,
         lastSentAt: null,
       },
