@@ -1425,14 +1425,13 @@ export default function DashboardPage() {
 
     if (!res.ok) {
       console.error("Failed to delete contact", await res.text())
-      // Optional: Kontakt bei Fehler wiederherstellen
-      // setContacts(prev => [...prev, ...])
+      // optional: hier könntest du bei Fehler den Kontakt wiederherstellen
     }
   } catch (e) {
     console.error(e)
-    // Optional: revert
   }
 }
+
 
 
   const handleDragContactToCategory = async (contactId: string, categoryId: string) => {
@@ -1798,22 +1797,22 @@ export default function DashboardPage() {
 
       // Backend-Contact -> Frontend-Contact mappen
       const mapped = data.map(c => ({
-        id: c.id,
-        name: c.name,
-        email: c.email,
-        // vorerst: Kategorien im Frontend weiter über categoryId regeln → alles erstmal Uncategorized
-        categoryId: c.category ?? null,
-        position: c.position ?? 0,
-        sentMails: (c.sentMails ?? []).map((m: any) => ({
-          id: m.id,
-          sentAt: m.sentAt,
-          note: "", // Backend hat noch kein Feld dafür → vorerst leer
-          attachments: (m.attachments ?? []).map((a: any) => ({
-            id: a.id,
-            filename: a.filename
-          }))
-        }))
-      }))
+  id: c.id,
+  name: c.name,
+  email: c.email,
+  categoryId: c.categoryId ?? null,   // ⬅️ WICHTIG
+  position: c.position ?? 0,
+  sentMails: (c.sentMails ?? []).map((m: any) => ({
+    id: m.id,
+    sentAt: m.sentAt,
+    note: "",
+    attachments: (m.attachments ?? []).map((a: any) => ({
+      id: a.id,
+      filename: a.filename,
+    })),
+  })),
+}))
+
 
       setContacts(mapped)
       setLoading(false)
