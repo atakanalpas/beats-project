@@ -44,6 +44,7 @@ type ManualDraft = {
 type Category = {
   id: string
   name: string
+  position?: number
 }
 
 type ThemeMode = "light" | "dark"
@@ -1194,10 +1195,8 @@ function ManualDraftSource({
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
-  const [categories, setCategories] = useState<Category[]>([
-  { id: "Producer", name: "Producer" },
-  { id: "Songwriter", name: "Songwriter" },
-])
+  const [categories, setCategories] = useState<Category[]>([])
+
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
@@ -1241,6 +1240,11 @@ export default function DashboardPage() {
   const sortMenuRef = useRef<HTMLDivElement>(null)
 
   const sortLabel = sortMode === "az" ? "A–Z" : sortMode === "custom" ? "Custom" : "Priority"
+
+  const sortedCategories = useMemo(() => {
+  return [...categories].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+}, [categories])
+
 
   useOnClickOutside(
     [addMenuRef, userMenuRef, dataMenuRef, sortMenuRef],
@@ -1334,9 +1338,36 @@ export default function DashboardPage() {
     setContacts(prev => prev.map(contact => (contact.id === contactId ? { ...contact, email } : contact)))
   }
 
-  const updateCategoryName = (categoryId: string, name: string) => {
-    setCategories(prev => prev.map(category => (category.id === categoryId ? { ...category, name } : category)))
+  const updateCategoryName = async (categoryId: string, name: string) => {
+  const trimmed = name.trim()
+
+  // Optimistic UI
+  setCategories(prev =>
+    prev.map(c => (c.id === categoryId ? { ...c, name: trimmed } : c))
+  )
+
+  try {
+    const res = await fetch(`/api/categories/${categoryId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      console.error("Failed to rename category:", err)
+
+      // Optional: reload categories to revert if needed
+      // const r = await fetch("/api/categories"); setCategories(await r.json());
+
+      alert("Failed to rename category: " + (err.error ?? res.statusText))
+    }
+  } catch (e) {
+    console.error("Failed to rename category:", e)
+    alert("Failed to rename category")
   }
+}
+
 
   const deleteMail = (contactId: string, mailId: string) => {
     if (confirm("Are you sure you want to delete this mail?")) {
@@ -1367,7 +1398,7 @@ export default function DashboardPage() {
         email,
         name: newContactName.trim(),
         // vorerst keine Kategorie → null
-        category: null
+        categoryId: null
       })
     })
 
@@ -1399,15 +1430,37 @@ export default function DashboardPage() {
   }
 }
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
   if (!newCategoryName.trim()) return
 
   const name = newCategoryName.trim()
+  const nextPos = Math.max(-1, ...sortedCategories.map(c => c.position ?? -1)) + 1
 
-  const newCategory: Category = { id: name, name }  // ✅ id = name
-  setCategories(prev => [...prev, newCategory])
-  setNewCategoryName("")
-  setShowAddCategory(false)
+  try {
+    const res = await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, position: nextPos }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert("Failed to create category: " + (err.error ?? res.statusText))
+      return
+    }
+
+    const created = await res.json()
+    setCategories(prev => [
+      ...prev,
+      { id: created.id, name: created.name, position: created.position ?? nextPos },
+    ])
+
+    setNewCategoryName("")
+    setShowAddCategory(false)
+  } catch (e) {
+    console.error(e)
+    alert("Unexpected error creating category")
+  }
 }
 
 
@@ -1459,7 +1512,7 @@ export default function DashboardPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        category: categoryId,   // Prisma-Feld
+        categoryId: categoryId,   // Prisma-Feld
         position: maxPos,
       }),
     })
@@ -1492,7 +1545,7 @@ export default function DashboardPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        category: null,
+        categoryId: null,
         position: maxPos,
       }),
     })
@@ -1624,6 +1677,14 @@ export default function DashboardPage() {
     } catch (e) {
       console.error("Failed to delete some contacts in backend", e)
     }
+    // Kategorien im Backend löschen
+if (categoryIds.length > 0) {
+  const ids = categoryIds.map(id => id.replace("category_", ""))
+  await Promise.all(
+    ids.map(id => fetch(`/api/categories/${id}`, { method: "DELETE" }))
+  )
+}
+
   }
 }
 
@@ -1634,7 +1695,7 @@ export default function DashboardPage() {
   const handleDeleteAll = () => deleteItems(allSelectableIds)
 
   const handleCsvExport = () => {
-    const categoryNameById = new Map(categories.map(c => [c.id, c.name]))
+    const categoryNameById = new Map(sortedCategories.map(c => [c.id, c.name]))
 
     const safe = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`
 
@@ -1824,6 +1885,32 @@ export default function DashboardPage() {
   }
 
   void load()
+}, [])
+
+useEffect(() => {
+  const loadCategories = async () => {
+    try {
+      const res = await fetch("/api/categories")
+      if (!res.ok) {
+        console.error("Failed to load categories", await res.text())
+        setCategories([])
+        return
+      }
+      const data = await res.json()
+      setCategories(
+        (data ?? []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          position: c.position ?? 0,
+        }))
+      )
+    } catch (e) {
+      console.error("Error loading categories:", e)
+      setCategories([])
+    }
+  }
+
+  void loadCategories()
 }, [])
 
 
@@ -2247,7 +2334,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {categories.map(category => (
+          {sortedCategories.map(category => (
             <CategorySection
               key={category.id}
               category={category}
