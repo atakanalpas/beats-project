@@ -68,21 +68,23 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// Ihre bestehenden Modelle (leicht angepasst)
 model Contact {
-  id          String    @id @default(cuid())
+  id          String     @id @default(cuid())
   userId      String
   name        String
   email       String
-  category    String?
-  position    Int       @default(0)
+
+  categoryId  String?    // FK → Category
+  position    Int        @default(0)
   lastSentAt  DateTime?
 
   sentMails   SentMail[]
-  user        User      @relation(fields: [userId], references: [id])
+  user        User       @relation(fields: [userId], references: [id])
+  category    Category?  @relation(fields: [categoryId], references: [id])
 
   @@unique([userId, email])
 }
+
 
 model SentMail {
   id              String     @id @default(cuid())
@@ -102,4 +104,16 @@ model Attachment {
   filename    String
 
   sentMail    SentMail  @relation(fields: [sentMailId], references: [id])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  position  Int       @default(0)
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts  Contact[]
+
+  @@unique([userId, name])
 }
