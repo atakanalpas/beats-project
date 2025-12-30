@@ -43,7 +43,7 @@ export async function PATCH(
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(email !== undefined ? { email: email.toLowerCase().trim() } : {}),
-        ...(category !== undefined ? { category } : {}),
+        ...(category !== undefined ? { categoryId: category } : {}),
         ...(position !== undefined ? { position } : {}),
         ...(lastSentAt !== undefined
           ? { lastSentAt: lastSentAt ? new Date(lastSentAt) : null }
