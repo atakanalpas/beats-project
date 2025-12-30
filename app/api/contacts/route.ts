@@ -59,18 +59,30 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(contact, { status: 201 });
-  } catch (err: any) {
-    // Unique constraint (userId + email)
-    if (err.code === "P2002") {
-      return NextResponse.json(
-        { error: "Contact already exists" },
-        { status: 409 }
-      );
-    }
+  // } catch (err: any) {
+  //   // Unique constraint (userId + email)
+  //   if (err.code === "P2002") {
+  //     return NextResponse.json(
+  //       { error: "Contact already exists" },
+  //       { status: 409 }
+  //     );
+  //   }
 
-    return NextResponse.json(
-      { error: "Failed to create contact" },
-      { status: 500 }
-    );
+  //   return NextResponse.json(
+  //     { error: "Failed to create contact" },
+  //     { status: 500 }
+  //   );
+  // }
+  } catch (err: any) {
+  console.error("Failed to create contact:", err)
+
+  if (err.code === "P2002") {
+    return NextResponse.json({ error: "Contact already exists" }, { status: 409 })
   }
+
+  return NextResponse.json(
+    { error: "Failed to create contact", code: err?.code, message: err?.message },
+    { status: 500 }
+  )
+}
 }
