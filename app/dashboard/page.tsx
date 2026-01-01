@@ -826,6 +826,7 @@ function CategorySection({
   justPlacedDraftId,
   onReorderMail,
   onReorderContact,
+  onMoveCategory,
 
 }: {
   category: Category
@@ -849,6 +850,8 @@ function CategorySection({
   justPlacedDraftId?: string | null
   onReorderMail: (contactId: string, mailId: string, newIndex: number) => void
   onReorderContact: (contactId: string, categoryId: string, newIndex: number) => void
+  onMoveCategory: (categoryId: string, dir: "up" | "down") => void
+
 
   
 }) {
@@ -979,39 +982,62 @@ const renderContactDropZone = (index: number) => (
           )}
 
           {isEditingCategory ? (
-            <div className="flex items-center gap-2 flex-1">
-              <input
-                type="text"
-                value={tempCategoryName}
-                onChange={e => setTempCategoryName(e.target.value)}
-                onBlur={handleCategorySave}
-                onKeyDown={e => {
-                  if (e.key === "Enter") handleCategorySave()
-                  if (e.key === "Escape") {
-                    setTempCategoryName(category.name)
-                    setIsEditingCategory(false)
-                  }
-                }}
-                className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-zinc-700 dark:text-zinc-200 flex-1 border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500"
-                autoFocus
-              />
-              <button onClick={handleCategorySave} className="text-xs text-blue-500 hover:text-blue-700 px-2">
-                ✓
-              </button>
-            </div>
-          ) : (
-            <div
-              className="text-xs font-semibold uppercase text-zinc-700 dark:text-zinc-200 flex-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text"
-              onClick={() => setIsEditingCategory(true)}
-              title="Click to edit category name"
-            >
-              {category.name}
-            </div>
-          )}
-        </div>
-      </div>
+  <div className="flex items-center gap-2 flex-1">
+    <input
+      type="text"
+      value={tempCategoryName}
+      onChange={e => setTempCategoryName(e.target.value)}
+      onBlur={handleCategorySave}
+      onKeyDown={e => {
+        if (e.key === "Enter") handleCategorySave()
+        if (e.key === "Escape") {
+          setTempCategoryName(category.name)
+          setIsEditingCategory(false)
+        }
+      }}
+      className="text-xs font-semibold uppercase bg-transparent focus:outline-none text-zinc-700 dark:text-zinc-200 flex-1 border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500"
+      autoFocus
+    />
+    <button onClick={handleCategorySave} className="text-xs text-blue-500 hover:text-blue-700 px-2">
+      ✓
+    </button>
+  </div>
+) : (
+  <div
+    className="text-xs font-semibold uppercase text-zinc-700 dark:text-zinc-200 flex-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 px-2 py-1 rounded cursor-text"
+    onClick={() => setIsEditingCategory(true)}
+    title="Click to edit category name"
+  >
+    {category.name}
+  </div>
+)}
 
-      {sortMode === "custom" && !isDeletingMode && renderContactDropZone(0)}
+{/* ✅ Buttons zum Verschieben der Kategorie */}
+{!isDeletingMode && (
+  <div className="flex items-center gap-1">
+    <button
+      onClick={() => onMoveCategory(category.id, "up")}
+      className="px-2 py-1 text-xs border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      title="Move category up"
+      type="button"
+    >
+      ↑
+    </button>
+    <button
+      onClick={() => onMoveCategory(category.id, "down")}
+      className="px-2 py-1 text-xs border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      title="Move category down"
+      type="button"
+    >
+      ↓
+    </button>
+  </div>
+)}
+</div>
+
+</div>
+
+{sortMode === "custom" && !isDeletingMode && renderContactDropZone(0)}
 
 {sortedContacts.map((contact, index) => (
   <React.Fragment key={contact.id}>
@@ -1244,6 +1270,37 @@ export default function DashboardPage() {
   const sortedCategories = useMemo(() => {
   return [...categories].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
 }, [categories])
+
+  const persistCategoryOrder = async (ordered: Category[]) => {
+  // lokal positionen normalisieren
+  const normalized = ordered.map((c, idx) => ({ ...c, position: idx }))
+  setCategories(normalized)
+
+  // backend speichern
+  await fetch("/api/categories/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: normalized.map(c => c.id) }),
+  })
+}
+
+const moveCategory = async (categoryId: string, dir: "up" | "down") => {
+  const list = [...sortedCategories] // du hast sortedCategories ja schon
+  const i = list.findIndex(c => c.id === categoryId)
+  if (i === -1) return
+
+  const j = dir === "up" ? i - 1 : i + 1
+  if (j < 0 || j >= list.length) return
+
+  ;[list[i], list[j]] = [list[j], list[i]]
+
+  try {
+    await persistCategoryOrder(list)
+  } catch (e) {
+    console.error("Failed to persist category order", e)
+  }
+}
+
 
 
   useOnClickOutside(
@@ -2358,6 +2415,8 @@ useEffect(() => {
               justPlacedDraftId={justPlacedDraftId}
               onReorderMail={handleReorderMail}
               onReorderContact={handleReorderContact}
+              onMoveCategory={moveCategory}
+
             />
           ))}
 
