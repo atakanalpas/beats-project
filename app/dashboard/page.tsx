@@ -1697,24 +1697,39 @@ const moveCategory = async (categoryId: string, dir: "up" | "down") => {
 
   if (!confirm(message)) return
 
-  // 1) Optimistisch aus dem UI entfernen
-  if (contactIds.length > 0) {
-    setContacts(prev =>
-      prev.filter(c => !contactIds.includes(`contact_${c.id}`)),
-    )
-  }
+  // 2) Backend löschen
+if (contactIds.length > 0) {
+  const ids = contactIds.map(id => id.replace("contact_", ""))
 
-  if (categoryIds.length > 0) {
-    const categoryIdsOnly = categoryIds.map(id => id.replace("category_", ""))
-    setCategories(prev => prev.filter(c => !categoryIdsOnly.includes(c.id)))
-    setContacts(prev =>
-      prev.map(c =>
-        c.categoryId && categoryIdsOnly.includes(c.categoryId)
-          ? { ...c, categoryId: null }
-          : c,
+  try {
+    await Promise.all(
+      ids.map(id =>
+        fetch(`/api/contacts/${id}`, { method: "DELETE" }),
       ),
     )
+  } catch (e) {
+    console.error("Failed to delete some contacts in backend", e)
   }
+}
+
+// ✅ Kategorien IMMER separat löschen (nicht in contactIds-Block!)
+if (categoryIds.length > 0) {
+  const ids = categoryIds.map(id => id.replace("category_", ""))
+
+  try {
+    const results = await Promise.all(
+      ids.map(id => fetch(`/api/categories/${id}`, { method: "DELETE" })),
+    )
+
+    const failed = results.filter(r => !r.ok)
+    if (failed.length) {
+      console.error("Failed to delete some categories:", failed.map(r => r.status))
+    }
+  } catch (e) {
+    console.error("Failed to delete some categories in backend", e)
+  }
+}
+
 
   setSelectedItems([])
   setIsDeletingMode(false)
