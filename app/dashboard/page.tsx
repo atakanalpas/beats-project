@@ -38,7 +38,9 @@ type ManualDraft = {
   id: string
   sentAt: string
   note?: string
-  contactId?: string
+  contactId?: string | null
+  position?: number
+
 }
 
 type Category = {
@@ -476,6 +478,38 @@ function ManualDraftCard({
 }) {
   const [open, setOpen] = useState(false)
 
+  // ✅ Debounce-Speicher pro Draft
+  const saveTimers = useRef<Record<string, number>>({})
+
+  const saveNoteDebounced = (draftId: string, note: string) => {
+    const t = saveTimers.current[draftId]
+    if (t) window.clearTimeout(t)
+
+    saveTimers.current[draftId] = window.setTimeout(() => {
+      void fetch(`/api/manual-drafts/${draftId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      })
+        .then(async res => {
+          if (!res.ok) console.error("Failed to save draft note:", await res.text())
+        })
+        .catch(err => console.error("Failed to save draft note:", err))
+    }, 400)
+  }
+
+  const deleteDraft = () => {
+    // UI sofort
+    setManualDrafts(prev => prev.filter(d => d.id !== draft.id))
+
+    // DB löschen
+    void fetch(`/api/manual-drafts/${draft.id}`, { method: "DELETE" })
+      .then(async res => {
+        if (!res.ok) console.error("Failed to delete draft:", await res.text())
+      })
+      .catch(err => console.error("Failed to delete draft:", err))
+  }
+
   return (
     <div
       className={[
@@ -485,20 +519,17 @@ function ManualDraftCard({
     >
       {isDeleting && (
         <button
-          onClick={() =>
-            setManualDrafts(prev => prev.filter(d => d.id !== draft.id))
-          }
+          onClick={deleteDraft}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] z-10 hover:bg-red-600"
           title="Delete manual card"
+          type="button"
         >
           ✕
         </button>
       )}
 
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[10px] text-zinc-500 mb-1">
-          {formatDate(draft.sentAt)}
-        </div>
+        <div className="text-[10px] text-zinc-500 mb-1">{formatDate(draft.sentAt)}</div>
 
         <button
           type="button"
@@ -510,23 +541,28 @@ function ManualDraftCard({
         </button>
       </div>
 
-      {/* MAIN NOTE – immer editierbar */}
+      {/* ✅ NOTE – editieren + automatisch speichern */}
       <textarea
         placeholder="No note"
         value={draft.note ?? ""}
-        onChange={e =>
+        onChange={e => {
+          const text = e.target.value
+
+          // UI sofort
           setManualDrafts(prev =>
-            prev.map(d =>
-              d.id === draft.id ? { ...d, note: e.target.value } : d
-            )
+            prev.map(d => (d.id === draft.id ? { ...d, note: text } : d))
           )
-        }
+
+          // DB speichern (debounced)
+          saveNoteDebounced(draft.id, text)
+        }}
         rows={open ? 4 : 2}
         className="w-full resize-none border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 text-[11px] bg-transparent text-zinc-900 dark:text-zinc-100 focus:outline-none"
       />
     </div>
   )
 }
+
 
 
 function ContactRow({
@@ -557,6 +593,8 @@ function ContactRow({
   onManualDraftPlaced?: (draftId: string) => void
   justPlacedDraftId?: string | null
   onReorderMail?: (contactId: string, mailId: string, newIndex: number) => void
+  resolveDraftId?: (id: string) => string
+
 }) {
   const mails = contact.sentMails ?? []
 
@@ -655,6 +693,24 @@ function ContactRow({
       }`}
     />
   )
+const draftSaveTimers = useRef<Record<string, number>>({})
+
+const saveDraftNoteDebounced = (draftId: string, note: string) => {
+  const t = draftSaveTimers.current[draftId]
+  if (t) window.clearTimeout(t)
+
+  draftSaveTimers.current[draftId] = window.setTimeout(() => {
+    void fetch(`/api/manual-drafts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
+    })
+      .then(async res => {
+        if (!res.ok) console.error("Failed to save draft note:", await res.text())
+      })
+      .catch(err => console.error("Failed to save draft note:", err))
+  }, 400)
+}
 
   return (
     <div
@@ -665,13 +721,26 @@ function ContactRow({
       ].join(" ")}
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
-        if (isDeleting) return
-        const draftId = e.dataTransfer.getData("manualDraft")
-        if (!draftId) return
+  if (isDeleting) return
+  const draftId = e.dataTransfer.getData("manualDraft")
+  if (!draftId) return
 
-        setManualDrafts(prev => prev.map(d => (d.id === draftId ? { ...d, contactId: contact.id } : d)))
-        onManualDraftPlaced?.(draftId)
-      }}
+  // UI
+  setManualDrafts(prev =>
+    prev.map(d => (d.id === draftId ? { ...d, contactId: contact.id } : d))
+  )
+  onManualDraftPlaced?.(draftId)
+
+  // DB
+  void fetch(`/api/manual-drafts/${draftId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contactId: contact.id }),
+  }).then(async res => {
+    if (!res.ok) console.error("Failed to place draft:", await res.text())
+  }).catch(err => console.error(err))
+}}
+
     >
       {/* LEFT */}
       <div className="sticky left-0 z-10 bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 flex">
@@ -1172,12 +1241,14 @@ function ManualDraftSource({
   isDeletingMode,
   setManualDrafts,
   onDraftCreated,
+  onDraftResolved,
   isPulsing,
   isDragging
 }: {
   isDeletingMode: boolean
   setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
   onDraftCreated?: (draftId: string) => void
+  onDraftResolved?: (tempId: string, realId: string) => void
   isPulsing?: boolean
   isDragging?: boolean
 }) {
@@ -1189,15 +1260,48 @@ function ManualDraftSource({
     <div
       draggable
       onDragStart={e => {
-        const draft: ManualDraft = { id: generateId(), sentAt: new Date().toISOString() }
+        const tempId = generateId()
+        const sentAt = new Date().toISOString()
+
+        // 1) Optimistisch anlegen (damit UI sofort die Karte kennt)
+        const draft: ManualDraft = { id: tempId, sentAt, note: "", contactId: null, position: 0 }
         setManualDrafts(prev => [...prev, draft])
-        e.dataTransfer.setData("manualDraft", draft.id)
+
+        // 2) Drag-Payload muss sofort gesetzt werden
+        e.dataTransfer.setData("manualDraft", tempId)
 
         if (topCardRef.current) {
           e.dataTransfer.setDragImage(topCardRef.current, 20, 20)
         }
 
-        onDraftCreated?.(draft.id)
+        onDraftCreated?.(tempId)
+
+        // 3) Backend anlegen (asynchron)
+        void (async () => {
+          try {
+            const res = await fetch("/api/manual-drafts", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ note: "" }),
+            })
+            if (!res.ok) {
+              console.error("Failed to create manual draft:", await res.text())
+              return
+            }
+
+            const created = await res.json()
+
+            // 4) temp Draft im State durch echten ersetzen
+            setManualDrafts(prev =>
+              prev.map(d => (d.id === tempId ? created : d))
+            )
+
+            // 5) tempId -> realId mapping dem Parent geben
+            onDraftResolved?.(tempId, created.id)
+          } catch (err) {
+            console.error("Failed to create manual draft:", err)
+          }
+        })()
       }}
       className="fixed bottom-6 right-6 z-50 cursor-grab select-none"
       title="Drag a manual card"
@@ -1218,6 +1322,7 @@ function ManualDraftSource({
   )
 }
 
+
 /* ================= MAIN ================= */
 
 export default function DashboardPage() {
@@ -1235,6 +1340,7 @@ export default function DashboardPage() {
   const mainScrollRef = useRef<HTMLElement | null>(null)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
+  const draftIdMap = useRef(new Map<string, string>())
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showDataMenu, setShowDataMenu] = useState(false)
@@ -1259,6 +1365,8 @@ export default function DashboardPage() {
 
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
+  const resolveDraftId = (id: string) => draftIdMap.current.get(id) ?? id
+
 
   const addMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -1341,6 +1449,45 @@ const moveCategory = async (categoryId: string, dir: "up" | "down") => {
     document.addEventListener("dragover", onDragOver)
     return () => document.removeEventListener("dragover", onDragOver)
   }, [])
+  useEffect(() => {
+  const loadDrafts = async () => {
+    const res = await fetch("/api/manual-drafts", { cache: "no-store" })
+    if (!res.ok) return
+    const data = await res.json()
+    setManualDrafts(data)
+  }
+  void loadDrafts()
+}, [])
+
+useEffect(() => {
+  const loadDrafts = async () => {
+    try {
+      const res = await fetch("/api/manual-drafts", { cache: "no-store" })
+      if (!res.ok) {
+        console.error("Failed to load manual drafts:", await res.text())
+        return
+      }
+      const data = await res.json()
+      setManualDrafts(data)
+    } catch (e) {
+      console.error("Error loading manual drafts:", e)
+    }
+  }
+
+  void loadDrafts()
+}, [])
+
+
+  useEffect(() => {
+  const loadDrafts = async () => {
+    const res = await fetch("/api/manual-drafts", { cache: "no-store" })
+    if (!res.ok) return
+    const data = await res.json()
+    setManualDrafts(data)
+  }
+  void loadDrafts()
+}, [])
+
 
   useEffect(() => {
     try {
@@ -1387,16 +1534,54 @@ const moveCategory = async (categoryId: string, dir: "up" | "down") => {
     )
   }
 
-  const updateContactName = (contactId: string, name: string) => {
-    setContacts(prev => prev.map(contact => (contact.id === contactId ? { ...contact, name } : contact)))
+  const updateContactName = async (contactId: string, name: string) => {
+  const trimmed = name.trim()
+  setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, name: trimmed } : c)))
+
+  try {
+    const res = await fetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    })
+    if (!res.ok) {
+      console.error("Failed to update contact name:", await res.text())
+    }
+  } catch (e) {
+    console.error("Failed to update contact name:", e)
+  }
+}
+
+
+  const updateContactEmail = async (contactId: string, email: string) => {
+  const cleaned = sanitizeEmail(email)
+  if (!isValidEmail(cleaned)) {
+    alert("Please enter a valid email.")
+    return
   }
 
-  const updateContactEmail = (contactId: string, email: string) => {
-    setContacts(prev => prev.map(contact => (contact.id === contactId ? { ...contact, email } : contact)))
+  setContacts(prev => prev.map(c => (c.id === contactId ? { ...c, email: cleaned } : c)))
+
+  try {
+    const res = await fetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: cleaned }),
+    })
+    if (!res.ok) {
+      console.error("Failed to update contact email:", await res.text())
+    }
+  } catch (e) {
+    console.error("Failed to update contact email:", e)
   }
+}
+
 
   const updateCategoryName = async (categoryId: string, name: string) => {
   const trimmed = name.trim()
+  if (!trimmed) return
+
+  const prevName = categories.find(c => c.id === categoryId)?.name ?? ""
 
   // Optimistic UI
   setCategories(prev =>
@@ -1411,19 +1596,34 @@ const moveCategory = async (categoryId: string, dir: "up" | "down") => {
     })
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      console.error("Failed to rename category:", err)
+      console.error("Failed to rename category:", await res.text())
 
-      // Optional: reload categories to revert if needed
-      // const r = await fetch("/api/categories"); setCategories(await r.json());
+      // rollback
+      setCategories(prev =>
+        prev.map(c => (c.id === categoryId ? { ...c, name: prevName } : c))
+      )
 
-      alert("Failed to rename category: " + (err.error ?? res.statusText))
+      alert("Failed to rename category")
+      return
     }
+
+    // optional: sync with backend response
+    const updated = await res.json()
+    setCategories(prev =>
+      prev.map(c => (c.id === categoryId ? { ...c, name: updated.name } : c))
+    )
   } catch (e) {
     console.error("Failed to rename category:", e)
+
+    // rollback
+    setCategories(prev =>
+      prev.map(c => (c.id === categoryId ? { ...c, name: prevName } : c))
+    )
+
     alert("Failed to rename category")
   }
 }
+
 
 
   const deleteMail = (contactId: string, mailId: string) => {
@@ -2665,12 +2865,16 @@ useEffect(() => {
 
       {/* FLOATING MANUAL DRAFT SOURCE */}
       <ManualDraftSource
-        isDeletingMode={isDeletingMode}
-        setManualDrafts={setManualDrafts}
-        onDraftCreated={handleDraftCreated}
-        isPulsing={stackPulse}
-        isDragging={isDraggingDraft}
-      />
+      isDeletingMode={isDeletingMode}
+      setManualDrafts={setManualDrafts}
+      onDraftCreated={handleDraftCreated}
+      onDraftResolved={(tempId, realId) => {
+      draftIdMap.current.set(tempId, realId)
+  }}
+      isPulsing={stackPulse}
+      isDragging={isDraggingDraft}
+/>
+
     </div>
   )
 }
