@@ -3,6 +3,10 @@ import { getServerSession } from "next-auth"
 import { prisma } from "@/lib/prisma"
 import { authOptions } from "@/lib/auth-options"
 
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 // GET /api/categories -> alle Kategorien des Users
 export async function GET() {
   const session = await getServerSession(authOptions)
