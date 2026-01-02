@@ -578,7 +578,11 @@ function ContactRow({
   isDeleting,
   onManualDraftPlaced,
   justPlacedDraftId,
-  onReorderMail
+  onReorderMail,
+  setPendingDraftPlacement,
+  resolveDraftId,
+
+
 }: {
   contact: Contact
   priorityAfterDays: number
@@ -593,7 +597,11 @@ function ContactRow({
   onManualDraftPlaced?: (draftId: string) => void
   justPlacedDraftId?: string | null
   onReorderMail?: (contactId: string, mailId: string, newIndex: number) => void
+  pendingPlacementRef?: React.MutableRefObject<Record<string, { contactId: string; position: number }>>
   resolveDraftId?: (id: string) => string
+  setPendingDraftPlacement?: (tempId: string, contactId: string, position: number) => void
+
+
 
 }) {
   const mails = contact.sentMails ?? []
@@ -722,24 +730,50 @@ const saveDraftNoteDebounced = (draftId: string, note: string) => {
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
   if (isDeleting) return
-  const draftId = e.dataTransfer.getData("manualDraft")
-  if (!draftId) return
 
-  // UI
+  const tempId = e.dataTransfer.getData("manualDraft")
+  if (!tempId) return
+
+  const realId = resolveDraftId ? resolveDraftId(tempId) : tempId
+
+  // position ans Ende innerhalb dieses Kontakts
+  const maxPos =
+    Math.max(
+      -1,
+      ...manualDrafts
+        .filter(d => d.contactId === contact.id)
+        .map(d => d.position ?? -1)
+    ) + 1
+
+  // UI sofort (für tempId ODER realId)
   setManualDrafts(prev =>
-    prev.map(d => (d.id === draftId ? { ...d, contactId: contact.id } : d))
+    prev.map(d =>
+      d.id === tempId || d.id === realId
+        ? { ...d, contactId: contact.id, position: maxPos }
+        : d
+    )
   )
-  onManualDraftPlaced?.(draftId)
 
-  // DB
-  void fetch(`/api/manual-drafts/${draftId}`, {
+  onManualDraftPlaced?.(tempId)
+
+  // falls wir noch keine echte DB-ID haben → pending merken
+  if (setPendingDraftPlacement && realId === tempId) {
+    setPendingDraftPlacement(tempId, contact.id, maxPos)
+    return
+  }
+
+  // DB speichern
+  void fetch(`/api/manual-drafts/${realId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contactId: contact.id }),
-  }).then(async res => {
-    if (!res.ok) console.error("Failed to place draft:", await res.text())
-  }).catch(err => console.error(err))
+    body: JSON.stringify({ contactId: contact.id, position: maxPos }),
+  })
+    .then(async res => {
+      if (!res.ok) console.error("Failed to place draft:", await res.text())
+    })
+    .catch(err => console.error(err))
 }}
+
 
     >
       {/* LEFT */}
@@ -856,6 +890,7 @@ const saveDraftNoteDebounced = (draftId: string, note: string) => {
 
           {manualDrafts
             .filter(d => d.contactId === contact.id)
+            .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
             .map(draft => (
               <ManualDraftCard
                 key={draft.id}
@@ -896,6 +931,9 @@ function CategorySection({
   onReorderMail,
   onReorderContact,
   onMoveCategory,
+  resolveDraftId,
+  setPendingDraftPlacement,
+
 
 }: {
   category: Category
@@ -920,6 +958,9 @@ function CategorySection({
   onReorderMail: (contactId: string, mailId: string, newIndex: number) => void
   onReorderContact: (contactId: string, categoryId: string, newIndex: number) => void
   onMoveCategory: (categoryId: string, dir: "up" | "down") => void
+  resolveDraftId: (id: string) => string
+  setPendingDraftPlacement: (tempId: string, contactId: string, position: number) => void
+
 
 
   
@@ -1136,6 +1177,10 @@ const renderContactDropZone = (index: number) => (
         onManualDraftPlaced={onManualDraftPlaced}
         justPlacedDraftId={justPlacedDraftId}
         onReorderMail={onReorderMail}
+        resolveDraftId={resolveDraftId}
+        setPendingDraftPlacement={setPendingDraftPlacement}
+
+        
       />
     </div>
 
@@ -1291,10 +1336,39 @@ function ManualDraftSource({
 
             const created = await res.json()
 
-            // 4) temp Draft im State durch echten ersetzen
-            setManualDrafts(prev =>
-              prev.map(d => (d.id === tempId ? created : d))
-            )
+            // 4) temp Draft im State durch echten ersetzen (aber Felder vom temp behalten!)
+setManualDrafts(prev =>
+  prev.map(d => {
+    if (d.id !== tempId) return d
+
+    // temp-State (kann schon contactId/position/note haben, weil du evtl. schon gedroppt hast)
+    const temp = d
+
+    return {
+      ...created,
+      note: temp.note ?? created.note,
+      contactId: temp.contactId ?? created.contactId,
+      position: temp.position ?? created.position,
+    }
+  })
+)
+
+// 5) tempId -> realId mapping dem Parent geben
+onDraftResolved?.(tempId, created.id)
+
+// 6) WICHTIG: falls schon gedroppt wurde → placement jetzt in DB speichern
+const tempNow = draft // das ist dein initialer draft mit contactId null, nicht nutzen
+// lieber: nochmal aus State ableiten geht hier nicht direkt.
+// Daher: einfach nochmal PATCH schicken, das ist idempotent:
+void fetch(`/api/manual-drafts/${created.id}`, {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    // wir senden absichtlich nur "note", falls du später note schon getippt hast
+    // contactId/position wird vom ContactRow-UI gesetzt, wenn du die nächste Änderung machst.
+  }),
+})
+
 
             // 5) tempId -> realId mapping dem Parent geben
             onDraftResolved?.(tempId, created.id)
@@ -1336,11 +1410,16 @@ export default function DashboardPage() {
   const [scanning, setScanning] = useState(false)
   const [sortMode, setSortMode] = useState<SortMode>("az")
   const [showSortMenu, setShowSortMenu] = useState(false)
+  const draftIdMapRef = useRef<Record<string, string>>({})
+  
+
 
   const mainScrollRef = useRef<HTMLElement | null>(null)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
   const draftIdMap = useRef(new Map<string, string>())
+  const pendingPlacementRef = useRef<Record<string, { contactId: string; position: number }>>({})
+  const resolveDraftId = (id: string) => draftIdMap.current.get(id) ?? id
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showDataMenu, setShowDataMenu] = useState(false)
@@ -1365,7 +1444,6 @@ export default function DashboardPage() {
 
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
-  const resolveDraftId = (id: string) => draftIdMap.current.get(id) ?? id
 
 
   const addMenuRef = useRef<HTMLDivElement>(null)
@@ -1407,6 +1485,25 @@ const moveCategory = async (categoryId: string, dir: "up" | "down") => {
   } catch (e) {
     console.error("Failed to persist category order", e)
   }
+}
+
+
+const handleDraftResolved = (tempId: string, realId: string) => {
+  draftIdMapRef.current[tempId] = realId
+
+  const pending = pendingPlacementRef.current[tempId]
+  if (pending) {
+    void fetch(`/api/manual-drafts/${realId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: pending.contactId, position: pending.position }),
+    }).catch(console.error)
+
+    delete pendingPlacementRef.current[tempId]
+  }
+}
+const setPendingDraftPlacement = (tempId: string, contactId: string, position: number) => {
+  pendingPlacementRef.current[tempId] = { contactId, position }
 }
 
 
@@ -1483,7 +1580,17 @@ useEffect(() => {
     const res = await fetch("/api/manual-drafts", { cache: "no-store" })
     if (!res.ok) return
     const data = await res.json()
-    setManualDrafts(data)
+
+setManualDrafts(
+  (data ?? []).map((d: any) => ({
+    id: d.id,
+    sentAt: d.sentAt,
+    note: d.note ?? "",
+    contactId: d.contactId ?? null,
+    position: d.position ?? 0,
+  }))
+)
+
   }
   void loadDrafts()
 }, [])
@@ -2071,6 +2178,7 @@ useEffect(() => {
     window.setTimeout(() => setStackPulse(false), 250)
     window.setTimeout(() => setJustPlacedDraftId(null), 650)
   }
+  
 
   const handleDraftCreated = () => {
     setIsDraggingDraft(true)
@@ -2608,6 +2716,9 @@ useEffect(() => {
               onReorderMail={handleReorderMail}
               onReorderContact={handleReorderContact}
               onMoveCategory={moveCategory}
+              resolveDraftId={resolveDraftId}
+              setPendingDraftPlacement={setPendingDraftPlacement}
+
 
             />
           ))}
@@ -2865,15 +2976,14 @@ useEffect(() => {
 
       {/* FLOATING MANUAL DRAFT SOURCE */}
       <ManualDraftSource
-      isDeletingMode={isDeletingMode}
-      setManualDrafts={setManualDrafts}
-      onDraftCreated={handleDraftCreated}
-      onDraftResolved={(tempId, realId) => {
-      draftIdMap.current.set(tempId, realId)
-  }}
-      isPulsing={stackPulse}
-      isDragging={isDraggingDraft}
+  isDeletingMode={isDeletingMode}
+  setManualDrafts={setManualDrafts}
+  onDraftCreated={handleDraftCreated}
+  onDraftResolved={handleDraftResolved}
+  isPulsing={stackPulse}
+  isDragging={isDraggingDraft}
 />
+
 
     </div>
   )
