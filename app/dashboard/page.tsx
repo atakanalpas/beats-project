@@ -479,24 +479,21 @@ function ManualDraftCard({
   const [open, setOpen] = useState(false)
 
   // ✅ Debounce-Speicher pro Draft
-  const saveTimers = useRef<Record<string, number>>({})
+  const saveTimer = useRef<number | null>(null)
 
-  const saveNoteDebounced = (draftId: string, note: string) => {
-    const t = saveTimers.current[draftId]
-    if (t) window.clearTimeout(t)
-
-    saveTimers.current[draftId] = window.setTimeout(() => {
-      void fetch(`/api/manual-drafts/${draftId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note }),
-      })
-        .then(async res => {
-          if (!res.ok) console.error("Failed to save draft note:", await res.text())
-        })
-        .catch(err => console.error("Failed to save draft note:", err))
-    }, 400)
-  }
+const saveNoteDebounced = (id: string, note: string) => {
+  if (saveTimer.current) window.clearTimeout(saveTimer.current)
+  saveTimer.current = window.setTimeout(() => {
+    void fetch(`/api/manual-drafts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ note }),
+    }).then(async res => {
+      if (!res.ok) console.error("Failed to save draft note:", await res.text())
+    }).catch(console.error)
+  }, 400)
+}
 
   const deleteDraft = () => {
     // UI sofort
@@ -730,49 +727,31 @@ const saveDraftNoteDebounced = (draftId: string, note: string) => {
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
   if (isDeleting) return
+  const draftId = e.dataTransfer.getData("manualDraft")
+  if (!draftId) return
 
-  const tempId = e.dataTransfer.getData("manualDraft")
-  if (!tempId) return
+  // Position: ans Ende der Kontakt-Drafts
+  const existing = manualDrafts.filter(d => d.contactId === contact.id)
+  const nextPos = existing.length ? Math.max(...existing.map(d => d.position ?? 0)) + 1 : 0
 
-  const realId = resolveDraftId ? resolveDraftId(tempId) : tempId
-
-  // position ans Ende innerhalb dieses Kontakts
-  const maxPos =
-    Math.max(
-      -1,
-      ...manualDrafts
-        .filter(d => d.contactId === contact.id)
-        .map(d => d.position ?? -1)
-    ) + 1
-
-  // UI sofort (für tempId ODER realId)
+  // UI
   setManualDrafts(prev =>
-    prev.map(d =>
-      d.id === tempId || d.id === realId
-        ? { ...d, contactId: contact.id, position: maxPos }
-        : d
-    )
+    prev.map(d => (d.id === draftId ? { ...d, contactId: contact.id, position: nextPos } : d))
   )
+  onManualDraftPlaced?.(draftId)
 
-  onManualDraftPlaced?.(tempId)
-
-  // falls wir noch keine echte DB-ID haben → pending merken
-  if (setPendingDraftPlacement && realId === tempId) {
-    setPendingDraftPlacement(tempId, contact.id, maxPos)
-    return
-  }
-
-  // DB speichern
-  void fetch(`/api/manual-drafts/${realId}`, {
+  // DB
+  void fetch(`/api/manual-drafts/${draftId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contactId: contact.id, position: maxPos }),
-  })
-    .then(async res => {
-      if (!res.ok) console.error("Failed to place draft:", await res.text())
-    })
-    .catch(err => console.error(err))
+    credentials: "include",
+    body: JSON.stringify({ contactId: contact.id, position: nextPos }),
+  }).then(async res => {
+    if (!res.ok) console.error("Failed to place draft:", await res.text())
+  }).catch(console.error)
 }}
+
+   
 
 
     >
@@ -1327,6 +1306,7 @@ function ManualDraftSource({
             const res = await fetch("/api/manual-drafts", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+              credentials: "include",
               body: JSON.stringify({ note: "" }),
             })
             if (!res.ok) {
@@ -1546,26 +1526,31 @@ const setPendingDraftPlacement = (tempId: string, contactId: string, position: n
     document.addEventListener("dragover", onDragOver)
     return () => document.removeEventListener("dragover", onDragOver)
   }, [])
-  useEffect(() => {
-  const loadDrafts = async () => {
-    const res = await fetch("/api/manual-drafts", { cache: "no-store" })
-    if (!res.ok) return
-    const data = await res.json()
-    setManualDrafts(data)
-  }
-  void loadDrafts()
-}, [])
 
 useEffect(() => {
   const loadDrafts = async () => {
     try {
-      const res = await fetch("/api/manual-drafts", { cache: "no-store" })
+      const res = await fetch("/api/manual-drafts", {
+        cache: "no-store",
+        credentials: "include",
+      })
+
       if (!res.ok) {
-        console.error("Failed to load manual drafts:", await res.text())
-        return
+        console.error("Failed to load manual drafts:", res.status, await res.text())
+        return // ❗ NICHT setManualDrafts([])!
       }
+
       const data = await res.json()
-      setManualDrafts(data)
+
+      setManualDrafts(
+        (data ?? []).map((d: any) => ({
+          id: d.id,
+          sentAt: d.sentAt,
+          note: d.note ?? "",
+          contactId: d.contactId ?? null,
+          position: d.position ?? 0,
+        }))
+      )
     } catch (e) {
       console.error("Error loading manual drafts:", e)
     }
@@ -1574,26 +1559,6 @@ useEffect(() => {
   void loadDrafts()
 }, [])
 
-
-  useEffect(() => {
-  const loadDrafts = async () => {
-    const res = await fetch("/api/manual-drafts", { cache: "no-store" })
-    if (!res.ok) return
-    const data = await res.json()
-
-setManualDrafts(
-  (data ?? []).map((d: any) => ({
-    id: d.id,
-    sentAt: d.sentAt,
-    note: d.note ?? "",
-    contactId: d.contactId ?? null,
-    position: d.position ?? 0,
-  }))
-)
-
-  }
-  void loadDrafts()
-}, [])
 
 
   useEffect(() => {
@@ -1649,6 +1614,7 @@ setManualDrafts(
     const res = await fetch(`/api/contacts/${contactId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ name: trimmed }),
     })
     if (!res.ok) {
@@ -1673,6 +1639,7 @@ setManualDrafts(
     const res = await fetch(`/api/contacts/${contactId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email: cleaned }),
     })
     if (!res.ok) {
@@ -1699,6 +1666,7 @@ setManualDrafts(
     const res = await fetch(`/api/categories/${categoryId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ name: trimmed }),
     })
 
@@ -1758,6 +1726,7 @@ setManualDrafts(
     const res = await fetch("/api/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         email,
         name: newContactName.trim(),
@@ -1804,6 +1773,7 @@ setManualDrafts(
     const res = await fetch("/api/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ name, position: nextPos }),
     })
 
@@ -1838,6 +1808,7 @@ setManualDrafts(
   try {
     const res = await fetch(`/api/contacts/${contactId}`, {
       method: "DELETE",
+      credentials: "include",
     })
 
     if (!res.ok) {
@@ -2200,49 +2171,70 @@ setManualDrafts(
     setShowUserMenu(false)
   }
 
-  useEffect(() => {
+  // Kontakte laden
+useEffect(() => {
   const load = async () => {
     try {
-      const res = await fetch("/api/dashboard")
+      const res = await fetch("/api/dashboard", { credentials: "include" })
       if (!res.ok) {
-        console.error("Failed to load dashboard data", await res.text())
-        setContacts([])
+        console.error("Failed to load dashboard data", res.status, await res.text())
         setLoading(false)
-        return
+        return // ❗ NICHT setContacts([])
       }
 
-      const data = await res.json() as any[]
-
-      // Backend-Contact -> Frontend-Contact mappen
-      const mapped = data.map(c => ({
-  id: c.id,
-  name: c.name,
-  email: c.email,
-  categoryId: c.categoryId ?? null,   // ⬅️ WICHTIG
-  position: c.position ?? 0,
-  sentMails: (c.sentMails ?? []).map((m: any) => ({
-    id: m.id,
-    sentAt: m.sentAt,
-    note: "",
-    attachments: (m.attachments ?? []).map((a: any) => ({
-      id: a.id,
-      filename: a.filename,
-    })),
-  })),
-}))
-
+      const data = await res.json()
+      const mapped = (data ?? []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        categoryId: c.categoryId ?? null,
+        position: c.position ?? 0,
+        sentMails: (c.sentMails ?? []).map((m: any) => ({
+          id: m.id,
+          sentAt: m.sentAt,
+          note: "",
+          attachments: (m.attachments ?? []).map((a: any) => ({
+            id: a.id,
+            filename: a.filename,
+          })),
+        })),
+      }))
 
       setContacts(mapped)
       setLoading(false)
-    } catch (error) {
-      console.error("Error loading data:", error)
-      setContacts([])
+    } catch (e) {
+      console.error("Error loading data:", e)
       setLoading(false)
+      return
     }
   }
-
   void load()
 }, [])
+
+// Kategorien laden
+useEffect(() => {
+  const loadCategories = async () => {
+    try {
+      const res = await fetch("/api/categories", { credentials: "include" })
+      if (!res.ok) {
+        console.error("Failed to load categories", res.status, await res.text())
+        return // ❗ NICHT setCategories([])
+      }
+      const data = await res.json()
+      setCategories(
+        (data ?? []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          position: c.position ?? 0,
+        }))
+      )
+    } catch (e) {
+      console.error("Error loading categories:", e)
+    }
+  }
+  void loadCategories()
+}, [])
+
 
 useEffect(() => {
   const loadCategories = async () => {
