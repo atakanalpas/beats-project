@@ -2170,28 +2170,57 @@ useEffect(() => {
     setShowUploadPreview(true)
   }
 
-  const handleImportConfirm = () => {
-    const toAdd = importPreview.filter(r => r.email && isValidEmail(r.email))
-    if (toAdd.length === 0) {
-      alert("No valid rows to import.")
+  const handleImportConfirm = async () => {
+  const toAdd = importPreview
+    .map(r => ({ name: r.name?.trim() ?? "", email: r.email?.trim() ?? "" }))
+    .filter(r => r.email && isValidEmail(r.email))
+
+  if (toAdd.length === 0) {
+    alert("No valid rows to import.")
+    return
+  }
+
+  try {
+    const res = await fetch("/api/contacts/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ contacts: toAdd }),
+    })
+
+    if (!res.ok) {
+      const txt = await res.text()
+      console.error("Bulk import failed:", txt)
+      alert("Import failed")
       return
     }
 
-    setContacts(prev => [
-      ...prev,
-      ...toAdd.map(r => ({
-        id: generateId(),
-        name: r.name || r.email,
-        email: r.email,
-        categoryId: null,
-        sentMails: []
-      }))
-    ])
+    const data = await res.json()
+    const saved = (data.contacts ?? []).map((c: any) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      categoryId: c.categoryId ?? null,
+      position: c.position ?? 0,
+      sentMails: [], // kommt später über dashboard reload / fetch
+    }))
+
+    // Merge ohne Duplikate (per id)
+    setContacts(prev => {
+      const byId = new Map(prev.map(p => [p.id, p]))
+      for (const c of saved) byId.set(c.id, { ...byId.get(c.id), ...c })
+      return Array.from(byId.values())
+    })
 
     setShowUploadPreview(false)
     setImportPreview([])
     setImportErrors([])
+  } catch (e) {
+    console.error(e)
+    alert("Unexpected error importing")
   }
+}
+
 
   const handleManualDraftPlaced = (draftId: string) => {
     setJustPlacedDraftId(draftId)
