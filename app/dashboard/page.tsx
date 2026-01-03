@@ -606,7 +606,7 @@ function ContactRow({
   justPlacedDraftId?: string | null
   onReorderMail?: (contactId: string, mailId: string, newIndex: number) => void
   pendingPlacementRef?: React.MutableRefObject<Record<string, { contactId: string; position: number }>>
-  resolveDraftId?: (id: string) => string
+  resolveDraftId: (id: string) => string
   setPendingDraftPlacement?: (tempId: string, contactId: string, position: number) => void
 
 
@@ -741,28 +741,38 @@ const saveDraftNoteDebounced = (draftId: string, note: string) => {
   const draftId = e.dataTransfer.getData("manualDraft")
   if (!draftId) return
 
-  // Position: ans Ende der Kontakt-Drafts
-  const existing = manualDrafts.filter(d => d.contactId === contact.id)
-  const nextPos = existing.length ? Math.max(...existing.map(d => d.position ?? 0)) + 1 : 0
+  const maxPos =
+    Math.max(
+      -1,
+      ...manualDrafts
+        .filter(d => d.contactId === contact.id)
+        .map(d => d.position ?? 0)
+    ) + 1
 
-  // UI
+  // UI sofort
   setManualDrafts(prev =>
-    prev.map(d => (d.id === draftId ? { ...d, contactId: contact.id, position: nextPos } : d))
+    prev.map(d =>
+      d.id === draftId ? { ...d, contactId: contact.id, position: maxPos } : d
+    )
   )
   onManualDraftPlaced?.(draftId)
 
-  // DB
-  void fetch(`/api/manual-drafts/${draftId}`, {
+  const realId = resolveDraftId?.(draftId) ?? draftId
+
+  // noch tempId → merken, handleDraftResolved patched später
+  if (realId === draftId) {
+    setPendingDraftPlacement?.(draftId, contact.id, maxPos)
+    return
+  }
+
+  // schon echte ID → sofort patchen
+  void fetch(`/api/manual-drafts/${realId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ contactId: contact.id, position: nextPos }),
-  }).then(async res => {
-    if (!res.ok) console.error("Failed to place draft:", await res.text())
+    body: JSON.stringify({ contactId: contact.id, position: maxPos }),
   }).catch(console.error)
 }}
-
-   
 
 
     >
@@ -1167,9 +1177,8 @@ const renderContactDropZone = (index: number) => (
         onManualDraftPlaced={onManualDraftPlaced}
         justPlacedDraftId={justPlacedDraftId}
         onReorderMail={onReorderMail}
-        resolveDraftId={resolveDraftId}
         setPendingDraftPlacement={setPendingDraftPlacement}
-
+        resolveDraftId={resolveDraftId}
         
       />
     </div>
@@ -1278,7 +1287,8 @@ function ManualDraftSource({
   onDraftCreated,
   onDraftResolved,
   isPulsing,
-  isDragging
+  isDragging,
+  pendingDraftCreates,
 }: {
   isDeletingMode: boolean
   setManualDrafts: React.Dispatch<React.SetStateAction<ManualDraft[]>>
@@ -1286,6 +1296,7 @@ function ManualDraftSource({
   onDraftResolved?: (tempId: string, realId: string) => void
   isPulsing?: boolean
   isDragging?: boolean
+  pendingDraftCreates: React.MutableRefObject<Set<string>>
 }) {
   const topCardRef = useRef<HTMLDivElement>(null)
 
@@ -1296,6 +1307,7 @@ function ManualDraftSource({
       draggable
       onDragStart={e => {
         const tempId = generateId()
+        pendingDraftCreates.current.add(tempId)
         const sentAt = new Date().toISOString()
 
         // 1) Optimistisch anlegen (damit UI sofort die Karte kennt)
@@ -1401,16 +1413,13 @@ export default function DashboardPage() {
   const [scanning, setScanning] = useState(false)
   const [sortMode, setSortMode] = useState<SortMode>("az")
   const [showSortMenu, setShowSortMenu] = useState(false)
-  const draftIdMapRef = useRef<Record<string, string>>({})
   
 
 
   const mainScrollRef = useRef<HTMLElement | null>(null)
 
   const [manualDrafts, setManualDrafts] = useState<ManualDraft[]>([])
-  const draftIdMap = useRef(new Map<string, string>())
-  const pendingPlacementRef = useRef<Record<string, { contactId: string; position: number }>>({})
-  const resolveDraftId = (id: string) => draftIdMap.current.get(id) ?? id
+  
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showDataMenu, setShowDataMenu] = useState(false)
@@ -1435,12 +1444,61 @@ export default function DashboardPage() {
 
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
+  const pendingDraftCreates = useRef(new Set<string>()) // tempIds, noch nicht in DB
+
+  const draftIdMap = useRef(new Map<string, string>())
+  const pendingDraftPlacement = useRef(new Map<string, { contactId: string; position: number }>())
+
+  const resolveDraftId = (id: string): string => draftIdMap.current.get(id) ?? id
+
+  const setPendingDraftPlacement = (tempId: string, contactId: string, position: number) => {
+  pendingDraftPlacement.current.set(tempId, { contactId, position })
+}
+
+  const handleDraftResolved = (tempId: string, realId: string) => {
+  draftIdMap.current.set(tempId, realId)
+
+  const pending = pendingDraftPlacement.current.get(tempId)
+  if (pending) {
+    pendingDraftPlacement.current.delete(tempId)
+
+    void fetch(`/api/manual-drafts/${realId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pending),
+    })
+  }
+}
+
 
 
   const addMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const dataMenuRef = useRef<HTMLDivElement>(null)
   const sortMenuRef = useRef<HTMLDivElement>(null)
+
+
+  const patchDraft = async (
+  draftId: string,
+  data: { contactId?: string | null; position?: number; note?: string }
+) => {
+  const realId = resolveDraftId(draftId)
+
+  // wenn noch nicht resolved → später patchen
+  if (realId === draftId && draftIdMap.current.size > 0 === false) {
+    // (optional) nur als Schutz, wir benutzen sowieso pending unten
+  }
+
+  const res = await fetch(`/api/manual-drafts/${realId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+
+  if (!res.ok) {
+    console.error("Failed to patch draft:", await res.text())
+  }
+}
 
   const sortLabel = sortMode === "az" ? "A–Z" : sortMode === "custom" ? "Custom" : "Priority"
 
@@ -1476,25 +1534,6 @@ const moveCategory = async (categoryId: string, dir: "up" | "down") => {
   } catch (e) {
     console.error("Failed to persist category order", e)
   }
-}
-
-
-const handleDraftResolved = (tempId: string, realId: string) => {
-  draftIdMapRef.current[tempId] = realId
-
-  const pending = pendingPlacementRef.current[tempId]
-  if (pending) {
-    void fetch(`/api/manual-drafts/${realId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contactId: pending.contactId, position: pending.position }),
-    }).catch(console.error)
-
-    delete pendingPlacementRef.current[tempId]
-  }
-}
-const setPendingDraftPlacement = (tempId: string, contactId: string, position: number) => {
-  pendingPlacementRef.current[tempId] = { contactId, position }
 }
 
 
@@ -2246,62 +2285,6 @@ useEffect(() => {
   void loadCategories()
 }, [])
 
-
-useEffect(() => {
-  const loadCategories = async () => {
-    try {
-      const res = await fetch("/api/categories")
-      if (!res.ok) {
-        console.error("Failed to load categories", await res.text())
-        setCategories([])
-        return
-      }
-      const data = await res.json()
-      setCategories(
-        (data ?? []).map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          position: c.position ?? 0,
-        }))
-      )
-    } catch (e) {
-      console.error("Error loading categories:", e)
-      setCategories([])
-    }
-  }
-
-  void loadCategories()
-}, [])
-
-useEffect(() => {
-  const loadManualDrafts = async () => {
-    try {
-      const res = await fetch("/api/manual-drafts", { cache: "no-store" })
-      if (!res.ok) {
-        console.error("Failed to load manual drafts:", await res.text())
-        return
-      }
-      const data = await res.json()
-
-      setManualDrafts(
-        (data ?? []).map((d: any) => ({
-          id: d.id,
-          sentAt: d.sentAt,
-          note: d.note ?? "",
-          contactId: d.contactId ?? null,
-          position: d.position ?? 0,
-        }))
-      )
-    } catch (e) {
-      console.error("Error loading manual drafts:", e)
-    }
-  }
-
-  void loadManualDrafts()
-}, [])
-
-
-
   // ✅ MUST be before the loading return
   const sortedUncategorizedContacts = useMemo(() => {
     let list = filterContacts(contacts.filter(c => !c.categoryId), search)
@@ -2796,6 +2779,8 @@ useEffect(() => {
                     onManualDraftPlaced={handleManualDraftPlaced}
                     justPlacedDraftId={justPlacedDraftId}
                     onReorderMail={handleReorderMail}
+                    resolveDraftId={resolveDraftId}
+                    setPendingDraftPlacement={setPendingDraftPlacement}
                   />
                 </div>
               ))}
@@ -3013,6 +2998,7 @@ useEffect(() => {
   onDraftResolved={handleDraftResolved}
   isPulsing={stackPulse}
   isDragging={isDraggingDraft}
+  pendingDraftCreates={pendingDraftCreates}
 />
 
 
