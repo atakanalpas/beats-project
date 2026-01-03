@@ -6,12 +6,10 @@ generator client {
 }
 
 datasource db {
-provider = "postgresql"
-url      = env("DATABASE_URL")
-directUrl = env("DIRECT_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
-
-
 
 // WICHTIG: NextAuth Models MÜSSEN genau diese Namen haben
 model Account {
@@ -42,12 +40,12 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String        @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?       @unique
   emailVerified DateTime?
   image         String?
-  manualDrafts ManualDraft[]
+  manualDrafts  ManualDraft[]
 
   // NextAuth Relations
   accounts Account[]
@@ -73,12 +71,11 @@ model VerificationToken {
 }
 
 model Contact {
-  id     String @id @default(cuid())
-  userId String
-  name   String
-  email  String
+  id           String        @id @default(cuid())
+  userId       String
+  name         String
+  email        String
   manualDrafts ManualDraft[]
-
 
   categoryId String? // FK → Category
   position   Int       @default(0)
@@ -126,7 +123,7 @@ model Category {
 model ManualDraft {
   id        String   @id @default(cuid())
   userId    String
-  contactId String?  // null = noch nicht abgelegt
+  contactId String? // null = noch nicht abgelegt
   note      String?  @db.Text
   sentAt    DateTime @default(now())
   position  Int      @default(0)

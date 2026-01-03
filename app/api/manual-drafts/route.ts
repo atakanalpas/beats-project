@@ -5,12 +5,10 @@ import { authOptions } from "@/lib/auth-options"
 
 export const dynamic = "force-dynamic"
 
-// GET /api/manual-drafts
+// GET /api/manual-drafts -> alle Drafts vom User
 export async function GET() {
   const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
@@ -20,22 +18,16 @@ export async function GET() {
 
   const drafts = await prisma.manualDraft.findMany({
     where: { userId: user.id },
-    orderBy: [
-      { contactId: "asc" },
-      { position: "asc" },
-      { sentAt: "asc" }, // ✅ nimm sentAt statt createdAt, wenn createdAt nicht existiert
-    ],
+    orderBy: [{ contactId: "asc" }, { position: "asc" }, { sentAt: "asc" }],
   })
 
   return NextResponse.json(drafts, { headers: { "Cache-Control": "no-store" } })
 }
 
-// POST /api/manual-drafts
+// POST /api/manual-drafts -> neuen Draft erstellen
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
@@ -43,7 +35,7 @@ export async function POST(req: NextRequest) {
   })
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
-  const body = await req.json()
+  const body = await req.json().catch(() => ({}))
   const { note } = body as { note?: string }
 
   const last = await prisma.manualDraft.findFirst({
@@ -58,7 +50,6 @@ export async function POST(req: NextRequest) {
       contactId: null,
       note: note ?? "",
       position: nextPos,
-      sentAt: new Date(),
     },
   })
 

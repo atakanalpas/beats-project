@@ -543,16 +543,27 @@ const saveNoteDebounced = (id: string, note: string) => {
         placeholder="No note"
         value={draft.note ?? ""}
         onChange={e => {
-          const text = e.target.value
+  const val = e.target.value
 
-          // UI sofort
-          setManualDrafts(prev =>
-            prev.map(d => (d.id === draft.id ? { ...d, note: text } : d))
-          )
+  // UI
+  setManualDrafts(prev =>
+    prev.map(d => (d.id === draft.id ? { ...d, note: val } : d))
+  )
 
-          // DB speichern (debounced)
-          saveNoteDebounced(draft.id, text)
-        }}
+  // DB (debounced) - hier direkt, ohne extra helper
+  window.clearTimeout((window as any).__draftTimer?.[draft.id])
+  ;(window as any).__draftTimer = (window as any).__draftTimer ?? {}
+  ;(window as any).__draftTimer[draft.id] = window.setTimeout(() => {
+    void fetch(`/api/manual-drafts/${draft.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: val }),
+    }).then(async res => {
+      if (!res.ok) console.error("Failed to save draft note:", await res.text())
+    })
+  }, 400)
+}}
+
         rows={open ? 4 : 2}
         className="w-full resize-none border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 text-[11px] bg-transparent text-zinc-900 dark:text-zinc-100 focus:outline-none"
       />
@@ -2261,6 +2272,34 @@ useEffect(() => {
 
   void loadCategories()
 }, [])
+
+useEffect(() => {
+  const loadManualDrafts = async () => {
+    try {
+      const res = await fetch("/api/manual-drafts", { cache: "no-store" })
+      if (!res.ok) {
+        console.error("Failed to load manual drafts:", await res.text())
+        return
+      }
+      const data = await res.json()
+
+      setManualDrafts(
+        (data ?? []).map((d: any) => ({
+          id: d.id,
+          sentAt: d.sentAt,
+          note: d.note ?? "",
+          contactId: d.contactId ?? null,
+          position: d.position ?? 0,
+        }))
+      )
+    } catch (e) {
+      console.error("Error loading manual drafts:", e)
+    }
+  }
+
+  void loadManualDrafts()
+}, [])
+
 
 
   // ✅ MUST be before the loading return
