@@ -24,12 +24,11 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null)
   const items = (body?.contacts ?? []) as Incoming[]
-
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "No contacts provided" }, { status: 400 })
   }
 
-  // clean + validate
+  // Clean + validate
   const cleaned = items
     .map((c) => {
       const email = c.email ? sanitizeEmail(c.email) : ""
@@ -46,26 +45,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No valid contacts found" }, { status: 400 })
   }
 
-  // Upsert pro row (einfach & zuverlässig, reicht für <= 200 Imports)
-  // -> erstellt neue, updated name/categoryId wenn existiert
-  const results = await prisma.$transaction(
-    cleaned.map((c) =>
-      prisma.contact.upsert({
-        where: { userId_email: { userId: user.id, email: c.email } }, // braucht @@unique([userId,email]) -> hast du
-        create: {
-          userId: user.id,
-          email: c.email,
-          name: c.name,
-          categoryId: c.categoryId,
-          position: 0,
-        },
-        update: {
-          name: c.name,
-          categoryId: c.categoryId,
-        },
+  // Transaction: find -> update or create
+  const saved = await prisma.$transaction(async (tx) => {
+    const out = []
+    for (const c of cleaned) {
+      const existing = await tx.contact.findFirst({
+        where: { userId: user.id, email: c.email },
+        select: { id: true },
       })
-    )
-  )
 
-  return NextResponse.json({ contacts: results }, { status: 201 })
+      if (existing) {
+        const updated = await tx.contact.update({
+          where: { id: existing.id },
+          data: { name: c.name, categoryId: c.categoryId },
+        })
+        out.push(updated)
+      } else {
+        const created = await tx.contact.create({
+          data: {
+            userId: user.id,
+            email: c.email,
+            name: c.name,
+            categoryId: c.categoryId,
+            position: 0,
+          },
+        })
+        out.push(created)
+      }
+    }
+    return out
+  })
+
+  return NextResponse.json({ contacts: saved }, { status: 201 })
 }
